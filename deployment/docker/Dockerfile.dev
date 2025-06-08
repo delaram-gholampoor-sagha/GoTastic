@@ -1,0 +1,30 @@
+FROM golang:1.23-alpine
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apk add --no-cache git make gcc musl-dev
+
+# Install Air for hot-reload
+RUN go install github.com/cosmtrek/air@latest
+
+# Install Delve for debugging
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN make build
+
+# Expose ports
+EXPOSE 8080 2345
+
+# Run Air for hot-reload
+CMD ["air", "-c", ".air.toml"] 

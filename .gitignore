@@ -24,9 +24,112 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
+# Environment files
 .env
+.env.*
+!.env.example
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker volumes and data
+deployment/docker/volume/
+**/localstack-data/
+**/mysql-data/
+**/redis-data/
+deployment/docker/.localstack/
+deployment/docker/localstack/
+**/data/
+**/volumes/
+
+# Python virtual environment
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# Build output
+bin/
+dist/
+build/
+
+# Deployment specific
+deployment/docker/**/data/
+deployment/docker/**/volumes/
+deployment/docker/**/tmp/
+deployment/docker/**/logs/
+deployment/docker/**/*.env
+deployment/docker/**/*.pem
+deployment/docker/**/*.key
+deployment/docker/**/*.crt
+
+# AWS credentials and config
+.aws/
+aws.json
+aws-config.json
+
+# Local development
+*.local
+local.*
+
+# Configuration files
+config/*.local.yaml
+config/*.dev.yaml
+config/*.prod.yaml
+config/*.staging.yaml
+!config/config.yaml
+
+# Test files
+test.txt
+test_*.txt
+*.test.txt
+
+# Air live reload
+.air.toml.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Cache directories
+.cache/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE specific
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project

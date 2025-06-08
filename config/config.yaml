@@ -1,0 +1,33 @@
+server:
+  port: 8080
+  timeout: 60s
+
+database:
+  host: localhost
+  port: 3306
+  name: gotastic
+  user: gotastic
+  password: gotastic
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: 5m
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 10
+  min_idle_conns: 5
+
+s3:
+  endpoint: "http://localhost:9000"
+  bucket: todo-files
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  use_ssl: false
+
+logging:
+  level: debug
+  format: json
+  output: stdout 
