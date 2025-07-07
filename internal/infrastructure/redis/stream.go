@@ -13,13 +13,13 @@ const (
 	todoStreamKey = "todo:stream"
 )
 
-// StreamPublisher implements domain.StreamPublisher
+
 type StreamPublisher struct {
 	client *redis.Client
 	logger logger.Logger
 }
 
-// NewStreamPublisher creates a new Redis Stream publisher
+
 func NewStreamPublisher(client *redis.Client, logger logger.Logger) *StreamPublisher {
 	return &StreamPublisher{
 		client: client,
@@ -27,14 +27,14 @@ func NewStreamPublisher(client *redis.Client, logger logger.Logger) *StreamPubli
 	}
 }
 
-// PublishTodoItem publishes a todo item to the Redis stream
+
 func (p *StreamPublisher) PublishTodoItem(ctx context.Context, todo *domain.TodoItem) error {
 	data, err := json.Marshal(todo)
 	if err != nil {
 		return err
 	}
 
-	// Add the message to the stream
+					
 	_, err = p.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: todoStreamKey,
 		Values: map[string]interface{}{

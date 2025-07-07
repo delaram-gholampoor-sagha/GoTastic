@@ -9,18 +9,18 @@ import (
 	"github.com/delaram/GoTastic/pkg/logger"
 )
 
-// TodoRepository implements repository.TodoRepository for MySQL
+
 type TodoRepository struct {
 	db     *sql.DB
 	logger logger.Logger
 }
 
-// NewTodoRepository creates a new MySQL todo repository
+
 func NewTodoRepository(db *sql.DB, logger logger.Logger) repository.TodoRepository {
 	return &TodoRepository{db: db, logger: logger}
 }
 
-// Create stores a new todo item
+
 func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
 		INSERT INTO todo_items (id, description, due_date, file_id)
@@ -40,7 +40,7 @@ func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) erro
 	return err
 }
 
-// GetByID retrieves a todo item by ID
+
 func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoItem, error) {
 	query := `
 		SELECT id, description, due_date, file_id, created_at, updated_at
@@ -68,7 +68,7 @@ func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoIt
 	return &todo, nil
 }
 
-// List retrieves all todo items
+
 func (r *TodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	query := `
 		SELECT id, description, due_date, file_id, created_at, updated_at
@@ -112,7 +112,7 @@ func (r *TodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	return todos, nil
 }
 
-// Update modifies an existing todo item
+
 func (r *TodoRepository) Update(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
 		UPDATE todo_items
@@ -145,7 +145,7 @@ func (r *TodoRepository) Update(ctx context.Context, todo *domain.TodoItem) erro
 	return nil
 }
 
-// Delete removes a todo item
+				
 func (r *TodoRepository) Delete(ctx context.Context, id string) error {
 	query := `
 		DELETE FROM todo_items

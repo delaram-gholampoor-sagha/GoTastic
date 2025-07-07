@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// BenchmarkCreateTodoItem benchmarks the CreateTodoItem operation
 func BenchmarkCreateTodoItem(b *testing.B) {
 	ctx := context.Background()
 	log := logger.New(logger.Config{
@@ -26,7 +25,6 @@ func BenchmarkCreateTodoItem(b *testing.B) {
 	mockStreamPublisher := new(MockStreamPublisher)
 	useCase := NewTodoUseCase(log, mockTodoRepo, mockFileRepo, mockCacheRepo, mockStreamPublisher)
 
-	// Cleanup
 	defer func() {
 		mockTodoRepo.AssertExpectations(b)
 		mockFileRepo.AssertExpectations(b)
@@ -34,7 +32,6 @@ func BenchmarkCreateTodoItem(b *testing.B) {
 		mockStreamPublisher.AssertExpectations(b)
 	}()
 
-	// Set up mock expectations
 	mockFileRepo.On("Exists", mock.Anything, "test-file-id").Return(true, nil)
 	mockTodoRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	mockCacheRepo.On("Delete", mock.Anything, "todos").Return(nil)
@@ -49,7 +46,6 @@ func BenchmarkCreateTodoItem(b *testing.B) {
 	}
 }
 
-// BenchmarkGetTodoItem benchmarks the GetTodoItem operation
 func BenchmarkGetTodoItem(b *testing.B) {
 	ctx := context.Background()
 	log := logger.New(logger.Config{
@@ -63,7 +59,6 @@ func BenchmarkGetTodoItem(b *testing.B) {
 	mockStreamPublisher := new(MockStreamPublisher)
 	useCase := NewTodoUseCase(log, mockTodoRepo, mockFileRepo, mockCacheRepo, mockStreamPublisher)
 
-	// Cleanup
 	defer func() {
 		mockTodoRepo.AssertExpectations(b)
 		mockFileRepo.AssertExpectations(b)
@@ -92,7 +87,6 @@ func BenchmarkGetTodoItem(b *testing.B) {
 	}
 }
 
-// BenchmarkListTodoItems benchmarks the ListTodoItems operation
 func BenchmarkListTodoItems(b *testing.B) {
 	ctx := context.Background()
 	log := logger.New(logger.Config{
@@ -106,7 +100,6 @@ func BenchmarkListTodoItems(b *testing.B) {
 	mockStreamPublisher := new(MockStreamPublisher)
 	useCase := NewTodoUseCase(log, mockTodoRepo, mockFileRepo, mockCacheRepo, mockStreamPublisher)
 
-	// Cleanup
 	defer func() {
 		mockTodoRepo.AssertExpectations(b)
 		mockFileRepo.AssertExpectations(b)
@@ -140,8 +133,7 @@ func BenchmarkListTodoItems(b *testing.B) {
 		}
 	}
 }
-
-// BenchmarkUpdateTodoItem benchmarks the UpdateTodoItem operation
+				
 func BenchmarkUpdateTodoItem(b *testing.B) {
 	log := logger.New(logger.Config{
 		Level:      "info",

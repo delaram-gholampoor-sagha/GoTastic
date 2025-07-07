@@ -13,14 +13,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// Handler handles HTTP requests
+
 type Handler struct {
 	logger      logger.Logger
 	todoUseCase *usecase.TodoUseCase
 	fileUseCase *usecase.FileUseCase
 }
 
-// NewHandler creates a new HTTP handler
+
 func NewHandler(logger logger.Logger, todoUseCase *usecase.TodoUseCase, fileUseCase *usecase.FileUseCase) *Handler {
 	return &Handler{
 		logger:      logger,
@@ -29,9 +29,9 @@ func NewHandler(logger logger.Logger, todoUseCase *usecase.TodoUseCase, fileUseC
 	}
 }
 
-// RegisterRoutes registers all routes on a Gin router
+
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
-	// Health check endpoint
+
 	r.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -55,7 +55,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-// ListTodoItems handles GET /api/v1/todos
+
 func (h *Handler) ListTodoItems(c *gin.Context) {
 	todos, err := h.todoUseCase.ListTodoItems(c.Request.Context())
 	if err != nil {
@@ -67,7 +67,7 @@ func (h *Handler) ListTodoItems(c *gin.Context) {
 		return
 	}
 
-	// Convert todos to response format
+
 	response := make([]gin.H, len(todos))
 	for i, todo := range todos {
 		response[i] = gin.H{
@@ -85,7 +85,7 @@ func (h *Handler) ListTodoItems(c *gin.Context) {
 	})
 }
 
-// CreateTodoItem handles POST /api/v1/todos
+
 func (h *Handler) CreateTodoItem(c *gin.Context) {
 	var req struct {
 		Description string    `json:"description" binding:"required"`
@@ -102,7 +102,7 @@ func (h *Handler) CreateTodoItem(c *gin.Context) {
 		return
 	}
 
-	// Validate description
+
 	if req.Description == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Description is required",
@@ -110,7 +110,7 @@ func (h *Handler) CreateTodoItem(c *gin.Context) {
 		return
 	}
 
-	// Validate due date
+
 	if req.DueDate.IsZero() {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Due date is required",
@@ -144,7 +144,7 @@ func (h *Handler) CreateTodoItem(c *gin.Context) {
 	})
 }
 
-// GetTodoItem handles GET /api/v1/todos/:id
+
 func (h *Handler) GetTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -164,7 +164,7 @@ func (h *Handler) GetTodoItem(c *gin.Context) {
 	c.JSON(http.StatusOK, todo)
 }
 
-// UpdateTodoItem handles PUT /api/v1/todos/:id
+
 func (h *Handler) UpdateTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -193,7 +193,7 @@ func (h *Handler) UpdateTodoItem(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// DeleteTodoItem handles DELETE /api/v1/todos/:id
+
 func (h *Handler) DeleteTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.todoUseCase.DeleteTodoItem(c.Request.Context(), id); err != nil {
@@ -204,7 +204,7 @@ func (h *Handler) DeleteTodoItem(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// UploadFile handles POST /api/v1/files
+
 func (h *Handler) UploadFile(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -222,7 +222,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"file_id": fileID})
 }
 
-// DownloadFile handles GET /api/v1/files/:id
+
 func (h *Handler) DownloadFile(c *gin.Context) {
 	id := c.Param("id")
 	reader, err := h.fileUseCase.DownloadFile(c.Request.Context(), id)
@@ -235,7 +235,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	io.Copy(c.Writer, reader)
 }
 
-// DeleteFile handles DELETE /api/v1/files/:id
+		
 func (h *Handler) DeleteFile(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.fileUseCase.DeleteFile(c.Request.Context(), id); err != nil {

@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockCacheRepository is a mock implementation of repository.CacheRepository
 type MockCacheRepository struct {
 	mock.Mock
 }
@@ -29,7 +28,6 @@ func (m *MockCacheRepository) Delete(ctx context.Context, key string) error {
 	return args.Error(0)
 }
 
-// MockTodoRepository is a mock implementation of repository.TodoRepository
 type MockTodoRepository struct {
 	mock.Mock
 }
@@ -62,7 +60,6 @@ func (m *MockTodoRepository) Delete(ctx context.Context, id string) error {
 	return args.Error(0)
 }
 
-// MockFileRepository is a mock implementation of repository.FileRepository
 type MockFileRepository struct {
 	mock.Mock
 }
@@ -90,18 +87,15 @@ func (m *MockFileRepository) Exists(ctx context.Context, fileID string) (bool, e
 	return args.Bool(0), args.Error(1)
 }
 
-// MockStreamPublisher is a mock implementation of domain.StreamPublisher
 type MockStreamPublisher struct {
 	mock.Mock
 }
 
-// PublishTodoItem mocks the PublishTodoItem method
 func (m *MockStreamPublisher) PublishTodoItem(ctx context.Context, todo *domain.TodoItem) error {
 	args := m.Called(ctx, todo)
 	return args.Error(0)
 }
-
-// PublishTodoItems mocks the PublishTodoItems method
+		
 func (m *MockStreamPublisher) PublishTodoItems(ctx context.Context, todos []*domain.TodoItem) error {
 	args := m.Called(ctx, todos)
 	return args.Error(0)

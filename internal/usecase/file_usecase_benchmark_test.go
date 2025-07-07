@@ -12,7 +12,7 @@ import (
 )
 
 func BenchmarkUploadFile(b *testing.B) {
-	// Setup
+
 	log := logger.New(logger.Config{
 		Level:      "info",
 		TimeFormat: time.RFC3339,
@@ -21,18 +21,18 @@ func BenchmarkUploadFile(b *testing.B) {
 	mockFileRepo := new(MockFileRepository)
 	uc := NewFileUseCase(log, mockFileRepo)
 
-	// Test data
+
 	fileContent := []byte("test file content")
 	reader := bytes.NewReader(fileContent)
 	filename := "test.txt"
 
-	// Expectations
+
 	mockFileRepo.On("Upload", mock.Anything, mock.Anything, filename).Return("test-file-id", nil)
 
-	// Reset timer
+
 	b.ResetTimer()
 
-	// Run benchmark
+
 	for i := 0; i < b.N; i++ {
 		_, err := uc.UploadFile(context.Background(), reader, filename)
 		if err != nil {
@@ -51,7 +51,7 @@ func BenchmarkDownloadFile(b *testing.B) {
 	mockRepo := new(MockFileRepository)
 	useCase := NewFileUseCase(log, mockRepo)
 
-	// Set up mock expectations
+
 	mockRepo.On("Exists", mock.Anything, "test-file-id").Return(true, nil)
 	mockRepo.On("Download", mock.Anything, "test-file-id").Return(io.NopCloser(bytes.NewReader([]byte("test content"))), nil)
 
@@ -76,7 +76,7 @@ func BenchmarkDeleteFile(b *testing.B) {
 	mockRepo := new(MockFileRepository)
 	useCase := NewFileUseCase(log, mockRepo)
 
-	// Set up mock expectations
+			
 	mockRepo.On("Exists", mock.Anything, "test-file-id").Return(true, nil)
 	mockRepo.On("Delete", mock.Anything, "test-file-id").Return(nil)
 

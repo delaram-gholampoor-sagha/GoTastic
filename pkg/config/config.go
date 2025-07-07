@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config holds all configuration for the application
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
@@ -16,7 +15,6 @@ type Config struct {
 	S3       S3Config
 }
 
-// ServerConfig holds server configuration
 type ServerConfig struct {
 	Port         string
 	ReadTimeout  time.Duration
@@ -24,7 +22,6 @@ type ServerConfig struct {
 	IdleTimeout  time.Duration
 }
 
-// DatabaseConfig holds database configuration
 type DatabaseConfig struct {
 	Host     string
 	Port     string
@@ -33,7 +30,6 @@ type DatabaseConfig struct {
 	Name     string
 }
 
-// RedisConfig holds Redis configuration
 type RedisConfig struct {
 	Host     string
 	Port     string
@@ -41,7 +37,6 @@ type RedisConfig struct {
 	DB       int
 }
 
-// S3Config holds S3 configuration
 type S3Config struct {
 	Endpoint  string
 	Bucket    string
@@ -50,7 +45,6 @@ type S3Config struct {
 	Region    string
 }
 
-// Load loads configuration from environment variables and config file
 func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -58,10 +52,10 @@ func Load() (*Config, error) {
 	viper.AddConfigPath("./config")
 	viper.AutomaticEnv()
 
-	// Set defaults
+
 	setDefaults()
 
-	// Read config file
+
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, err
@@ -100,7 +94,6 @@ func Load() (*Config, error) {
 	return config, nil
 }
 
-// setDefaults sets default values for configuration
 func setDefaults() {
 	viper.SetDefault("server.port", "8080")
 	viper.SetDefault("server.read_timeout", "5s")
@@ -121,7 +114,6 @@ func setDefaults() {
 	viper.SetDefault("s3.region", "us-east-1")
 }
 
-// getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -130,7 +122,6 @@ func getEnv(key, defaultValue string) string {
 	return value
 }
 
-// getInt gets an integer environment variable or returns a default value
 func getInt(key string, defaultValue int) int {
 	value := os.Getenv(key)
 	if value == "" {
@@ -143,7 +134,6 @@ func getInt(key string, defaultValue int) int {
 	return intValue
 }
 
-// getDuration gets a duration environment variable or returns a default value
 func getDuration(key string, defaultValue time.Duration) time.Duration {
 	value := os.Getenv(key)
 	if value == "" {

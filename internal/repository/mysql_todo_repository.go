@@ -8,13 +8,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// MySQLTodoRepository implements TodoRepository using MySQL
+
 type MySQLTodoRepository struct {
 	logger *zap.Logger
 	db     *sql.DB
 }
 
-// NewMySQLTodoRepository creates a new MySQL todo repository
+
 func NewMySQLTodoRepository(logger *zap.Logger, db *sql.DB) *MySQLTodoRepository {
 	return &MySQLTodoRepository{
 		logger: logger,
@@ -22,7 +22,7 @@ func NewMySQLTodoRepository(logger *zap.Logger, db *sql.DB) *MySQLTodoRepository
 	}
 }
 
-// Create creates a new todo item
+
 func (r *MySQLTodoRepository) Create(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
 		INSERT INTO todo_items (id, description, due_date, file_id, created_at, updated_at)
@@ -45,7 +45,7 @@ func (r *MySQLTodoRepository) Create(ctx context.Context, todo *domain.TodoItem)
 	return nil
 }
 
-// Get retrieves a todo item by ID
+
 func (r *MySQLTodoRepository) Get(ctx context.Context, id string) (*domain.TodoItem, error) {
 	query := `
 		SELECT id, description, due_date, file_id, created_at, updated_at
@@ -73,7 +73,7 @@ func (r *MySQLTodoRepository) Get(ctx context.Context, id string) (*domain.TodoI
 	return &todo, nil
 }
 
-// List retrieves all todo items
+
 func (r *MySQLTodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	query := `
 		SELECT id, description, due_date, file_id, created_at, updated_at
@@ -114,7 +114,7 @@ func (r *MySQLTodoRepository) List(ctx context.Context) ([]*domain.TodoItem, err
 	return todos, nil
 }
 
-// Update updates a todo item
+
 func (r *MySQLTodoRepository) Update(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
 		UPDATE todo_items
@@ -147,7 +147,7 @@ func (r *MySQLTodoRepository) Update(ctx context.Context, todo *domain.TodoItem)
 	return nil
 }
 
-// Delete deletes a todo item
+					
 func (r *MySQLTodoRepository) Delete(ctx context.Context, id string) error {
 	query := `
 		DELETE FROM todo_items

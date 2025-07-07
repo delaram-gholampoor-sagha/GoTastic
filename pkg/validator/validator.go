@@ -12,7 +12,6 @@ var (
 	trans    ut.Translator
 )
 
-// Init initializes the validator
 func Init() {
 	validate = validator.New()
 	english := en.New()
@@ -21,12 +20,10 @@ func Init() {
 	en_translations.RegisterDefaultTranslations(validate, trans)
 }
 
-// Validate validates a struct
 func Validate(i interface{}) error {
 	return validate.Struct(i)
 }
 
-// TranslateError translates validation errors to human-readable messages
 func TranslateError(err error) []string {
 	if err == nil {
 		return nil
@@ -43,8 +40,7 @@ func TranslateError(err error) []string {
 	}
 	return errors
 }
-
-// RegisterCustomValidation registers a custom validation function
+				
 func RegisterCustomValidation(tag string, fn validator.Func) error {
 	return validate.RegisterValidation(tag, fn)
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// RequestID adds a unique request ID to each request
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
@@ -22,17 +21,14 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
-// Logger logs request details
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery
 
-		// Process request
 		c.Next()
 
-		// Log details
 		latency := time.Since(start)
 		clientIP := c.ClientIP()
 		method := c.Request.Method
@@ -57,7 +53,6 @@ func Logger() gin.HandlerFunc {
 	}
 }
 
-// Recovery recovers from panics
 func Recovery() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
@@ -75,8 +70,7 @@ func Recovery() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-// CORS handles Cross-Origin Resource Sharing
+								
 func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")

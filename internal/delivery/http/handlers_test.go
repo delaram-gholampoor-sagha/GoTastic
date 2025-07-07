@@ -39,7 +39,7 @@ func setupTestHandler() (*Handler, *usecase.MockTodoRepository, *usecase.MockFil
 func TestHandleFileUpload(t *testing.T) {
 	handler, _, mockFileRepo, _, _ := setupTestHandler()
 
-	// Create test file
+
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("file", "test.txt")
@@ -47,20 +47,20 @@ func TestHandleFileUpload(t *testing.T) {
 	part.Write([]byte("test content"))
 	writer.Close()
 
-	// Create request
+
 	req := httptest.NewRequest("POST", "/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	// Setup expectations
+
 	mockFileRepo.On("Upload", mock.Anything, mock.Anything, "test.txt").Return("test-file-id", nil)
 
-	// Execute
+
 	handler.UploadFile(c)
 
-	// Assert
+
 	assert.Equal(t, http.StatusCreated, w.Code)
 	var response map[string]string
 	err = json.NewDecoder(w.Body).Decode(&response)
@@ -71,7 +71,6 @@ func TestHandleFileUpload(t *testing.T) {
 func TestHandleCreateTodo(t *testing.T) {
 	handler, mockTodoRepo, mockFileRepo, mockCacheRepo, mockStreamPublisher := setupTestHandler()
 
-	// Create request
 	reqBody := map[string]interface{}{
 		"description": "Test todo",
 		"due_date":    time.Now().Add(24 * time.Hour),
@@ -83,16 +82,16 @@ func TestHandleCreateTodo(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	// Setup expectations
+
 	mockFileRepo.On("Exists", mock.Anything, "test-file-id").Return(true, nil)
 	mockTodoRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	mockCacheRepo.On("Delete", mock.Anything, "todos").Return(nil)
 	mockStreamPublisher.On("PublishTodoItem", mock.Anything, mock.AnythingOfType("*domain.TodoItem")).Return(nil)
 
-	// Execute
+
 	handler.CreateTodoItem(c)
 
-	// Assert
+
 	assert.Equal(t, http.StatusCreated, w.Code)
 	var response domain.TodoItem
 	err := json.NewDecoder(w.Body).Decode(&response)
@@ -104,7 +103,7 @@ func TestHandleCreateTodo(t *testing.T) {
 func TestHandleGetTodo(t *testing.T) {
 	handler, mockTodoRepo, _, mockCacheRepo, mockStreamPublisher := setupTestHandler()
 
-	// Create test todo
+
 	id := uuid.New().String()
 	expectedTodo := &domain.TodoItem{
 		ID:          uuid.MustParse(id),
@@ -113,24 +112,24 @@ func TestHandleGetTodo(t *testing.T) {
 		FileID:      "test-file-id",
 	}
 
-	// Create request
+
 	req := httptest.NewRequest("GET", "/todo/"+id, nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 	c.Params = []gin.Param{{Key: "id", Value: id}}
 
-	// Setup expectations
+
 	cacheKey := "todo:" + id
 	mockCacheRepo.On("Get", mock.Anything, cacheKey).Return(nil, nil)
 	mockTodoRepo.On("GetByID", mock.Anything, id).Return(expectedTodo, nil)
 	mockCacheRepo.On("Set", mock.Anything, cacheKey, expectedTodo, time.Hour).Return(nil)
 	mockStreamPublisher.On("PublishTodoItem", mock.Anything, expectedTodo).Return(nil)
 
-	// Execute
+
 	handler.GetTodoItem(c)
 
-	// Assert
+
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response domain.TodoItem
 	err := json.NewDecoder(w.Body).Decode(&response)
@@ -143,7 +142,7 @@ func TestHandleGetTodo(t *testing.T) {
 func TestHandleListTodos(t *testing.T) {
 	handler, mockTodoRepo, _, mockCacheRepo, mockStreamPublisher := setupTestHandler()
 
-	// Create test todos
+
 	expectedTodos := []*domain.TodoItem{
 		{
 			ID:          uuid.New(),
@@ -159,22 +158,22 @@ func TestHandleListTodos(t *testing.T) {
 		},
 	}
 
-	// Create request
+
 	req := httptest.NewRequest("GET", "/todo", nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	// Setup expectations
+
 	mockCacheRepo.On("Get", mock.Anything, "todos").Return(nil, nil)
 	mockTodoRepo.On("List", mock.Anything).Return(expectedTodos, nil)
 	mockCacheRepo.On("Set", mock.Anything, "todos", expectedTodos, time.Hour).Return(nil)
 	mockStreamPublisher.On("PublishTodoItems", mock.Anything, mock.AnythingOfType("[]*domain.TodoItem")).Return(nil)
 
-	// Execute
+
 	handler.ListTodoItems(c)
 
-	// Assert
+
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response struct {
 		Todos []domain.TodoItem `json:"todos"`
@@ -196,7 +195,7 @@ func TestHandleUpdateTodo(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(todo)
-	// Setup expectations
+
 	mockFileRepo.On("Exists", mock.Anything, "updated-file").Return(true, nil)
 	mockTodoRepo.On("Update", mock.Anything, mock.MatchedBy(func(t *domain.TodoItem) bool {
 		return t.ID == todo.ID && t.Description == todo.Description
@@ -219,7 +218,7 @@ func TestHandleDeleteTodo(t *testing.T) {
 	handler, mockTodoRepo, _, mockCacheRepo, mockStreamPublisher := setupTestHandler()
 
 	id := uuid.New().String()
-	// Setup expectations
+
 	mockTodoRepo.On("Delete", mock.Anything, id).Return(nil)
 	mockCacheRepo.On("Delete", mock.Anything, "todo:"+id).Return(nil)
 	mockCacheRepo.On("Delete", mock.Anything, "todos").Return(nil)
