@@ -13,13 +13,11 @@ import (
 	"github.com/google/uuid"
 )
 
-
 type Handler struct {
 	logger      logger.Logger
 	todoUseCase *usecase.TodoUseCase
 	fileUseCase *usecase.FileUseCase
 }
-
 
 func NewHandler(logger logger.Logger, todoUseCase *usecase.TodoUseCase, fileUseCase *usecase.FileUseCase) *Handler {
 	return &Handler{
@@ -28,7 +26,6 @@ func NewHandler(logger logger.Logger, todoUseCase *usecase.TodoUseCase, fileUseC
 		fileUseCase: fileUseCase,
 	}
 }
-
 
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
 
@@ -55,7 +52,6 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-
 func (h *Handler) ListTodoItems(c *gin.Context) {
 	todos, err := h.todoUseCase.ListTodoItems(c.Request.Context())
 	if err != nil {
@@ -66,7 +62,6 @@ func (h *Handler) ListTodoItems(c *gin.Context) {
 		})
 		return
 	}
-
 
 	response := make([]gin.H, len(todos))
 	for i, todo := range todos {
@@ -85,7 +80,6 @@ func (h *Handler) ListTodoItems(c *gin.Context) {
 	})
 }
 
-
 func (h *Handler) CreateTodoItem(c *gin.Context) {
 	var req struct {
 		Description string    `json:"description" binding:"required"`
@@ -102,14 +96,12 @@ func (h *Handler) CreateTodoItem(c *gin.Context) {
 		return
 	}
 
-
 	if req.Description == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Description is required",
 		})
 		return
 	}
-
 
 	if req.DueDate.IsZero() {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -144,7 +136,6 @@ func (h *Handler) CreateTodoItem(c *gin.Context) {
 	})
 }
 
-
 func (h *Handler) GetTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -163,7 +154,6 @@ func (h *Handler) GetTodoItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, todo)
 }
-
 
 func (h *Handler) UpdateTodoItem(c *gin.Context) {
 	id := c.Param("id")
@@ -193,7 +183,6 @@ func (h *Handler) UpdateTodoItem(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-
 func (h *Handler) DeleteTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.todoUseCase.DeleteTodoItem(c.Request.Context(), id); err != nil {
@@ -203,7 +192,6 @@ func (h *Handler) DeleteTodoItem(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
-
 
 func (h *Handler) UploadFile(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
@@ -222,7 +210,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"file_id": fileID})
 }
 
-
 func (h *Handler) DownloadFile(c *gin.Context) {
 	id := c.Param("id")
 	reader, err := h.fileUseCase.DownloadFile(c.Request.Context(), id)
@@ -235,7 +222,6 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	io.Copy(c.Writer, reader)
 }
 
-		
 func (h *Handler) DeleteFile(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.fileUseCase.DeleteFile(c.Request.Context(), id); err != nil {

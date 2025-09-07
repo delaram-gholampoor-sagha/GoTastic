@@ -22,6 +22,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+
+	graphqlDelivery "github.com/delaram/GoTastic/internal/delivery/graphql"
 )
 
 type Container struct {
@@ -104,6 +106,8 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	fileUseCase := usecase.NewFileUseCase(log, fileRepo)
 	handler := http.NewHandler(log, todoUseCase, fileUseCase)
 	handler.RegisterRoutes(router)
+
+	graphqlDelivery.RegisterGinGraphQL(router, todoUseCase, fileUseCase)
 
 	resp := response.New(true, nil, "", nil)
 

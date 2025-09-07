@@ -1,0 +1,26 @@
+scalar Upload
+scalar Time
+
+type Todo {
+  id: ID!
+  description: String!
+  dueDate: Time!
+  fileId: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Query {
+  health: String!
+  todos: [Todo!]!
+  todo(id: ID!): Todo
+}
+
+type Mutation {
+  createTodo(description: String!, dueDate: Time!, fileId: String): Todo!
+  updateTodo(id: ID!, description: String!, dueDate: Time!, fileId: String): Boolean!
+  deleteTodo(id: ID!): Boolean!
+
+  uploadFile(file: Upload!): ID!
+  deleteFile(id: ID!): Boolean!
+}
