@@ -11,7 +11,6 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/delaram/GoTastic/internal/delivery/graphql/model"
 	"github.com/delaram/GoTastic/internal/domain"
-	"github.com/google/uuid"
 )
 
 // CreateTodo is the resolver for the createTodo field.
@@ -29,16 +28,15 @@ func (r *mutationResolver) CreateTodo(ctx context.Context, description string, d
 
 // UpdateTodo is the resolver for the updateTodo field.
 func (r *mutationResolver) UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (bool, error) {
-	uid, err := uuid.Parse(id)
-	if err != nil {
-		return false, err
-	}
-	var fid string
+	fid := ""
 	if fileID != nil {
 		fid = *fileID
 	}
-	err = r.TodoUC.UpdateTodoItem(ctx, &domain.TodoItem{
-		ID: uid, Description: description, DueDate: dueDate, FileID: fid,
+	err := r.TodoUC.UpdateTodoItem(ctx, &domain.TodoItem{
+		PublicID:    id,
+		Description: description,
+		DueDate:     dueDate,
+		FileID:      fid,
 	})
 	if err != nil {
 		return false, err

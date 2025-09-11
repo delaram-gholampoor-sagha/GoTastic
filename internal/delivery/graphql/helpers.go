@@ -9,7 +9,7 @@ func toModelTodoPtr(t *domain.TodoItem) *model.Todo {
 	if t == nil {
 		return nil
 	}
-	id := t.ID.String()
+	id := t.PublicID
 	var filePtr *string
 	if t.FileID != "" {
 		f := t.FileID
@@ -18,10 +18,10 @@ func toModelTodoPtr(t *domain.TodoItem) *model.Todo {
 	return &model.Todo{
 		ID:          id,
 		Description: t.Description,
-		DueDate:     t.DueDate, // time.Time
+		DueDate:     t.DueDate,
 		FileID:      filePtr,
-		CreatedAt:   t.CreatedAt, // time.Time
-		UpdatedAt:   t.UpdatedAt, // time.Time
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
 	}
 }
 
