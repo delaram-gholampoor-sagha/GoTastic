@@ -41,7 +41,7 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 	}
 
 	todo := &domain.TodoItem{
-		PublicID:    uuid.NewString(),
+		ID:          uuid.New(),
 		Description: description,
 		DueDate:     dueDate,
 		FileID:      fileID,
@@ -54,26 +54,35 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		return nil, err
 	}
 
-	_ = u.cacheRepo.Delete(ctx, "todos")
-	_ = u.streamPublisher.PublishTodoItem(ctx, todo)
+	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
+		u.logger.Warn("Failed to invalidate cache", err)
+	}
+
+	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
+		u.logger.Warn("Failed to publish todo item to stream", err)
+	}
 
 	return todo, nil
 }
 
 func (u *TodoUseCase) GetTodoItem(ctx context.Context, id string) (*domain.TodoItem, error) {
 	cacheKey := "todo:" + id
-	if cached, _ := u.cacheRepo.Get(ctx, cacheKey); cached != nil {
-		// NOTE: your cache stores JSON into interface{};
-		// type-assert here will usually fail.
+	cached, _ := u.cacheRepo.Get(ctx, cacheKey)
+	if cached != nil {
+		if todo, ok := cached.(*domain.TodoItem); ok {
+			return todo, nil
+		}
 	}
-
 	todo, err := u.todoRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	u.cacheRepo.Set(ctx, cacheKey, todo, time.Hour)
 
-	_ = u.cacheRepo.Set(ctx, cacheKey, todo, time.Hour)
-	_ = u.streamPublisher.PublishTodoItem(ctx, todo)
+	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
+		u.logger.Warn("Failed to publish todo item to stream", err)
+	}
+
 	return todo, nil
 }
 
@@ -114,6 +123,7 @@ func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem)
 			return repository.ErrNotFound
 		}
 	}
+
 	todo.UpdatedAt = time.Now()
 
 	if err := u.todoRepo.Update(ctx, todo); err != nil {
@@ -121,9 +131,17 @@ func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem)
 		return err
 	}
 
-	_ = u.cacheRepo.Delete(ctx, "todo:"+todo.PublicID)
-	_ = u.cacheRepo.Delete(ctx, "todos")
-	_ = u.streamPublisher.PublishTodoItem(ctx, todo)
+	if err := u.cacheRepo.Delete(ctx, "todo:"+todo.ID.String()); err != nil {
+		u.logger.Warn("Failed to invalidate todo cache", err)
+	}
+	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
+		u.logger.Warn("Failed to invalidate todos cache", err)
+	}
+
+	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
+		u.logger.Warn("Failed to publish todo item to stream", err)
+	}
+
 	return nil
 }
 
@@ -133,8 +151,17 @@ func (u *TodoUseCase) DeleteTodoItem(ctx context.Context, id string) error {
 		return err
 	}
 
-	_ = u.cacheRepo.Delete(ctx, "todo:"+id)
-	_ = u.cacheRepo.Delete(ctx, "todos")
-	_ = u.streamPublisher.PublishTodoItem(ctx, &domain.TodoItem{PublicID: id})
+	if err := u.cacheRepo.Delete(ctx, "todo:"+id); err != nil {
+		u.logger.Warn("Failed to invalidate todo cache", err)
+	}
+	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
+		u.logger.Warn("Failed to invalidate todos cache", err)
+	}
+												
+	todo := &domain.TodoItem{ID: uuid.MustParse(id)}
+	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
+		u.logger.Warn("Failed to publish todo item to stream", err)
+	}
+
 	return nil
 }

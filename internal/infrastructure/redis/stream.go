@@ -6,37 +6,47 @@ import (
 
 	"github.com/delaram/GoTastic/internal/domain"
 	"github.com/delaram/GoTastic/pkg/logger"
-	"github.com/latolukasz/beeorm"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
 	todoStreamKey = "todo:stream"
 )
 
+
 type StreamPublisher struct {
-	cache  *beeorm.RedisCache
+	client *redis.Client
 	logger logger.Logger
 }
 
-func NewStreamPublisher(cache *beeorm.RedisCache, logger logger.Logger) *StreamPublisher {
+
+func NewStreamPublisher(client *redis.Client, logger logger.Logger) *StreamPublisher {
 	return &StreamPublisher{
-		cache:  cache,
+		client: client,
 		logger: logger,
 	}
 }
 
-func (p *StreamPublisher) PublishTodoItem(ctx context.Context, todo *domain.TodoItem) error {
-	_ = ctx
 
-	payload, err := json.Marshal(todo)
+func (p *StreamPublisher) PublishTodoItem(ctx context.Context, todo *domain.TodoItem) error {
+	data, err := json.Marshal(todo)
 	if err != nil {
 		return err
 	}
 
-	pl := p.cache.PipeLine()
-	idCmd := pl.XAdd(todoStreamKey, []string{"data", string(payload)})
-	pl.Exec()
+					
+	_, err = p.client.XAdd(ctx, &redis.XAddArgs{
+		Stream: todoStreamKey,
+		Values: map[string]interface{}{
+			"data": string(data),
+		},
+	}).Result()
 
-	_ = idCmd.Result()
+	if err != nil {
+		p.logger.Error("Failed to publish todo item to stream", err)
+		return err
+	}
+
+	p.logger.Info("Successfully published todo item to stream")
 	return nil
 }

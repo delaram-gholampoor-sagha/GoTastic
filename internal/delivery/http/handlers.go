@@ -158,39 +158,26 @@ func (h *Handler) GetTodoItem(c *gin.Context) {
 func (h *Handler) UpdateTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid todo ID"})
-		return
-	}
-	// optional: validate UUID format
-	if _, err := uuid.Parse(id); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid todo ID format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid todo ID"})
 		return
 	}
 
-	// Bind only allowed fields (safer than binding domain directly)
-	var req struct {
-		Description string    `json:"description" binding:"required"`
-		DueDate     time.Time `json:"due_date" binding:"required"`
-		FileID      *string   `json:"file_id"`
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid todo ID format"})
+		return
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+
+	var todo domain.TodoItem
+	if err := c.ShouldBindJSON(&todo); err != nil {
 		h.logger.Error("Failed to decode request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
-
-	todo := &domain.TodoItem{
-		PublicID:    id,
-		Description: req.Description,
-		DueDate:     req.DueDate,
-	}
-	if req.FileID != nil {
-		todo.FileID = *req.FileID
-	}
-
-	if err := h.todoUseCase.UpdateTodoItem(c.Request.Context(), todo); err != nil {
+	todo.ID = parsedID
+	if err := h.todoUseCase.UpdateTodoItem(c.Request.Context(), &todo); err != nil {
 		h.logger.Error("Failed to update todo item", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update todo item"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update todo item"})
 		return
 	}
 	c.Status(http.StatusNoContent)
