@@ -1,172 +1,91 @@
-package mysql
+// internal/infrastructure/mysql/todo_repository.go
+package mysqlinfra
 
 import (
 	"context"
-	"database/sql"
+	"fmt"
 
 	"github.com/delaram/GoTastic/internal/domain"
 	"github.com/delaram/GoTastic/internal/repository"
-	"github.com/delaram/GoTastic/pkg/logger"
+	"github.com/latolukasz/beeorm"
 )
 
+type todoRepository struct{ engine beeorm.Engine }
 
-type TodoRepository struct {
-	db     *sql.DB
-	logger logger.Logger
+func NewTodoRepository(engine beeorm.Engine) repository.TodoRepository {
+	return &todoRepository{engine: engine}
 }
 
-
-func NewTodoRepository(db *sql.DB, logger logger.Logger) repository.TodoRepository {
-	return &TodoRepository{db: db, logger: logger}
+func (r *todoRepository) Create(ctx context.Context, todo *domain.TodoItem) error {
+	flusher := r.engine.NewFlusher()
+	flusher.Track(todo)
+	return flusher.FlushWithCheck()
 }
 
-
-func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) error {
-	query := `
-		INSERT INTO todo_items (id, description, due_date, file_id)
-		VALUES (?, ?, ?, ?)
-	`
-
-	_, err := r.db.ExecContext(ctx, query,
-		todo.ID,
-		todo.Description,
-		todo.DueDate,
-		todo.FileID,
-	)
-
-	if err != nil {
-		r.logger.Error("Failed to create todo", err)
-	}
-	return err
-}
-
-
-func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoItem, error) {
-	query := `
-		SELECT id, description, due_date, file_id, created_at, updated_at
-		FROM todo_items
-		WHERE id = ?
-	`
-
+func (r *todoRepository) GetByID(ctx context.Context, publicID string) (*domain.TodoItem, error) {
 	var todo domain.TodoItem
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&todo.ID,
-		&todo.Description,
-		&todo.DueDate,
-		&todo.FileID,
-		&todo.CreatedAt,
-		&todo.UpdatedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, repository.ErrNotFound
-		}
-		r.logger.Error("Failed to get todo", err)
-		return nil, err
+	where := beeorm.NewWhere("PublicID = ?", publicID)
+	if ok := r.engine.SearchOne(where, &todo); !ok {
+		return nil, repository.ErrNotFound
 	}
-
 	return &todo, nil
 }
 
-
-func (r *TodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
-	query := `
-		SELECT id, description, due_date, file_id, created_at, updated_at
-		FROM todo_items
-		ORDER BY due_date ASC
-	`
-
-	rows, err := r.db.QueryContext(ctx, query)
-	if err != nil {
-		r.logger.Error("Failed to list todos", err)
-		return nil, err
-	}
-	defer rows.Close()
-
+func (r *todoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	var todos []*domain.TodoItem
-
-	for rows.Next() {
-		var todo domain.TodoItem
-		err := rows.Scan(
-			&todo.ID,
-			&todo.Description,
-			&todo.DueDate,
-			&todo.FileID,
-			&todo.CreatedAt,
-			&todo.UpdatedAt,
-		)
-
-		if err != nil {
-			r.logger.Error("Failed to scan todo", err)
-			return nil, err
-		}
-
-		todos = append(todos, &todo)
-	}
-
-	if err = rows.Err(); err != nil {
-		r.logger.Error("Failed to iterate todos", err)
-		return nil, err
-	}
-
+	where := beeorm.NewWhere("1=1")
+	pager := beeorm.NewPager(1, 1000)
+	r.engine.Search(where, pager, &todos)
 	return todos, nil
 }
 
-
-func (r *TodoRepository) Update(ctx context.Context, todo *domain.TodoItem) error {
-	query := `
-		UPDATE todo_items
-		SET description = ?, due_date = ?, file_id = ?
-		WHERE id = ?
-	`
-
-	result, err := r.db.ExecContext(ctx, query,
-		todo.Description,
-		todo.DueDate,
-		todo.FileID,
-		todo.ID,
-	)
-
-	if err != nil {
-		r.logger.Error("Failed to update todo", err)
-		return err
+func (r *todoRepository) GetAll(ctx context.Context, limit, offset int) ([]domain.TodoItem, error) {
+	var todos []*domain.TodoItem
+	where := beeorm.NewWhere("1=1")
+	page := 1
+	if limit > 0 {
+		page = offset/limit + 1
 	}
+	pager := beeorm.NewPager(page, limit)
+	r.engine.Search(where, pager, &todos)
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		r.logger.Error("Failed to get rows affected", err)
-		return err
+	out := make([]domain.TodoItem, len(todos))
+	for i, t := range todos {
+		out[i] = *t
 	}
-
-	if rows == 0 {
-		return repository.ErrNotFound
-	}
-
-	return nil
+	return out, nil
 }
 
-				
-func (r *TodoRepository) Delete(ctx context.Context, id string) error {
-	query := `
-		DELETE FROM todo_items
-		WHERE id = ?
-	`
-
-	result, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		r.logger.Error("Failed to delete todo", err)
-		return err
+func (r *todoRepository) FindByID(ctx context.Context, id uint64) (domain.TodoItem, error) {
+	var todo domain.TodoItem
+	if !r.engine.LoadByID(id, &todo) {
+		return todo, fmt.Errorf("todo with id %d not found", id)
 	}
+	return todo, nil
+}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		r.logger.Error("Failed to get rows affected", err)
-		return err
-	}
-
-	if rows == 0 {
+func (r *todoRepository) Update(ctx context.Context, todo *domain.TodoItem) error {
+	var existing domain.TodoItem
+	if ok := r.engine.SearchOne(beeorm.NewWhere("PublicID = ?", todo.PublicID), &existing); !ok {
 		return repository.ErrNotFound
 	}
 
-	return nil
+	existing.Description = todo.Description
+	existing.DueDate = todo.DueDate
+	existing.FileID = todo.FileID
+	existing.UpdatedAt = todo.UpdatedAt
+
+	flusher := r.engine.NewFlusher()
+	flusher.Track(&existing)
+	return flusher.FlushWithCheck()
+}
+
+func (r *todoRepository) Delete(ctx context.Context, publicID string) error {
+	var todo domain.TodoItem
+	if ok := r.engine.SearchOne(beeorm.NewWhere("PublicID = ?", publicID), &todo); !ok {
+		return repository.ErrNotFound
+	}
+	flusher := r.engine.NewFlusher()
+	flusher.Delete(&todo)
+	return flusher.FlushWithCheck()
 }
