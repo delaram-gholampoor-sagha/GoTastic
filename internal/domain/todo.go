@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-
 type TodoItem struct {
 	ID          uuid.UUID `json:"id"`
 	Description string    `json:"description"`
@@ -15,7 +14,6 @@ type TodoItem struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
-
 
 func NewTodoItem(description string, dueDate time.Time, fileID string) *TodoItem {
 	now := time.Now()
@@ -29,6 +27,33 @@ func NewTodoItem(description string, dueDate time.Time, fileID string) *TodoItem
 	}
 }
 
+type TodoFilter struct {
+	Q       *string
+	DueFrom *time.Time
+	DueTo   *time.Time
+	HasFile *bool
+}
+
+type SortField int
+
+const (
+	SortCreatedAt SortField = iota
+	SortDueDate
+	SortUpdatedAt
+	SortDescription
+)
+
+type SortDirection int
+
+const (
+	SortAsc SortDirection = iota
+	SortDesc
+)
+
+type TodoSort struct {
+	Field     SortField
+	Direction SortDirection
+}
 
 func (t *TodoItem) Validate() error {
 	if t.Description == "" {
@@ -40,16 +65,13 @@ func (t *TodoItem) Validate() error {
 	return nil
 }
 
-
 type Error struct {
 	message string
 }
 
-
 func NewError(message string) error {
 	return &Error{message: message}
 }
-
 
 func (e *Error) Error() string {
 	return e.message

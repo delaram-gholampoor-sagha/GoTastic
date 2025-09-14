@@ -65,6 +65,18 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 	return todo, nil
 }
 
+// usecase/todo.go (add method)
+func (u *TodoUseCase) ListTodoItemsPaged(ctx context.Context, f domain.TodoFilter, s domain.TodoSort, limit, offset int) ([]*domain.TodoItem, int64, error) {
+	// enforce sane caps
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return u.todoRepo.ListPaged(ctx, f, s, limit, offset)
+}
+
 func (u *TodoUseCase) GetTodoItem(ctx context.Context, id string) (*domain.TodoItem, error) {
 	cacheKey := "todo:" + id
 	cached, _ := u.cacheRepo.Get(ctx, cacheKey)
@@ -157,7 +169,7 @@ func (u *TodoUseCase) DeleteTodoItem(ctx context.Context, id string) error {
 	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
 		u.logger.Warn("Failed to invalidate todos cache", err)
 	}
-												
+
 	todo := &domain.TodoItem{ID: uuid.MustParse(id)}
 	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
 		u.logger.Warn("Failed to publish todo item to stream", err)

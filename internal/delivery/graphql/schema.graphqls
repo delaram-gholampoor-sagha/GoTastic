@@ -2,25 +2,51 @@ scalar Upload
 scalar Time
 
 type Todo {
-  id: ID!
-  description: String!
-  dueDate: Time!
-  fileId: String
-  createdAt: Time!
-  updatedAt: Time!
+    id: ID!
+    description: String!
+    dueDate: Time!
+    fileId: String
+    createdAt: Time!
+    updatedAt: Time!
+}
+
+# ---- NEW: pagination & filtering ----
+input TodoFilter {
+    q: String            # matches description (simple LIKE)
+    dueFrom: Time
+    dueTo: Time
+    hasFile: Boolean
+}
+
+enum TodoSortField { CREATED_AT DUE_DATE UPDATED_AT DESCRIPTION }
+enum SortDirection { ASC DESC }
+
+input TodoSort {
+    field: TodoSortField! = UPDATED_AT
+    direction: SortDirection! = DESC
+}
+
+input PageInput {
+    limit: Int!
+    offset: Int!
+}
+
+type TodoPage {
+    total: Int!
+    items: [Todo!]!
 }
 
 type Query {
-  health: String!
-  todos: [Todo!]!
-  todo(id: ID!): Todo
+    health: String!
+    todos(page: PageInput!, filter: TodoFilter, sort: TodoSort): TodoPage!  # CHANGED
+    todo(id: ID!): Todo
 }
 
 type Mutation {
-  createTodo(description: String!, dueDate: Time!, fileId: String): Todo!
-  updateTodo(id: ID!, description: String!, dueDate: Time!, fileId: String): Boolean!
-  deleteTodo(id: ID!): Boolean!
+    createTodo(description: String!, dueDate: Time!, fileId: String): Todo!
+    updateTodo(id: ID!, description: String!, dueDate: Time!, fileId: String): Todo!  # CHANGED
+    deleteTodo(id: ID!): Boolean!
 
-  uploadFile(file: Upload!): ID!
-  deleteFile(id: ID!): Boolean!
+    uploadFile(file: Upload!): ID!
+    deleteFile(id: ID!): Boolean!
 }

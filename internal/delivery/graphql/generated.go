@@ -59,7 +59,7 @@ type ComplexityRoot struct {
 	Query struct {
 		Health func(childComplexity int) int
 		Todo   func(childComplexity int, id string) int
-		Todos  func(childComplexity int) int
+		Todos  func(childComplexity int, page model.PageInput, filter *model.TodoFilter, sort *model.TodoSort) int
 	}
 
 	Todo struct {
@@ -70,18 +70,23 @@ type ComplexityRoot struct {
 		ID          func(childComplexity int) int
 		UpdatedAt   func(childComplexity int) int
 	}
+
+	TodoPage struct {
+		Items func(childComplexity int) int
+		Total func(childComplexity int) int
+	}
 }
 
 type MutationResolver interface {
 	CreateTodo(ctx context.Context, description string, dueDate time.Time, fileID *string) (*model.Todo, error)
-	UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (bool, error)
+	UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (*model.Todo, error)
 	DeleteTodo(ctx context.Context, id string) (bool, error)
 	UploadFile(ctx context.Context, file graphql.Upload) (string, error)
 	DeleteFile(ctx context.Context, id string) (bool, error)
 }
 type QueryResolver interface {
 	Health(ctx context.Context) (string, error)
-	Todos(ctx context.Context) ([]*model.Todo, error)
+	Todos(ctx context.Context, page model.PageInput, filter *model.TodoFilter, sort *model.TodoSort) (*model.TodoPage, error)
 	Todo(ctx context.Context, id string) (*model.Todo, error)
 }
 
@@ -188,7 +193,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			break
 		}
 
-		return e.complexity.Query.Todos(childComplexity), true
+		args, err := ec.field_Query_todos_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Todos(childComplexity, args["page"].(model.PageInput), args["filter"].(*model.TodoFilter), args["sort"].(*model.TodoSort)), true
 
 	case "Todo.createdAt":
 		if e.complexity.Todo.CreatedAt == nil {
@@ -232,6 +242,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Todo.UpdatedAt(childComplexity), true
 
+	case "TodoPage.items":
+		if e.complexity.TodoPage.Items == nil {
+			break
+		}
+
+		return e.complexity.TodoPage.Items(childComplexity), true
+
+	case "TodoPage.total":
+		if e.complexity.TodoPage.Total == nil {
+			break
+		}
+
+		return e.complexity.TodoPage.Total(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -239,7 +263,11 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
-	inputUnmarshalMap := graphql.BuildUnmarshalerMap()
+	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputPageInput,
+		ec.unmarshalInputTodoFilter,
+		ec.unmarshalInputTodoSort,
+	)
 	first := true
 
 	switch opCtx.Operation.Operation {
@@ -457,6 +485,27 @@ func (ec *executionContext) field_Query_todo_args(ctx context.Context, rawArgs m
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_todos_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "page", ec.unmarshalNPageInput2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐPageInput)
+	if err != nil {
+		return nil, err
+	}
+	args["page"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "filter", ec.unmarshalOTodoFilter2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoFilter)
+	if err != nil {
+		return nil, err
+	}
+	args["filter"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "sort", ec.unmarshalOTodoSort2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoSort)
+	if err != nil {
+		return nil, err
+	}
+	args["sort"] = arg2
+	return args, nil
+}
+
 func (ec *executionContext) field___Directive_args_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -604,9 +653,9 @@ func (ec *executionContext) _Mutation_updateTodo(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(bool)
+	res := resTmp.(*model.Todo)
 	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+	return ec.marshalNTodo2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_updateTodo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -616,7 +665,21 @@ func (ec *executionContext) fieldContext_Mutation_updateTodo(ctx context.Context
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Todo_id(ctx, field)
+			case "description":
+				return ec.fieldContext_Todo_description(ctx, field)
+			case "dueDate":
+				return ec.fieldContext_Todo_dueDate(ctx, field)
+			case "fileId":
+				return ec.fieldContext_Todo_fileId(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Todo_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Todo_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Todo", field.Name)
 		},
 	}
 	defer func() {
@@ -856,7 +919,7 @@ func (ec *executionContext) _Query_todos(ctx context.Context, field graphql.Coll
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Todos(rctx)
+		return ec.resolvers.Query().Todos(rctx, fc.Args["page"].(model.PageInput), fc.Args["filter"].(*model.TodoFilter), fc.Args["sort"].(*model.TodoSort))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -868,12 +931,12 @@ func (ec *executionContext) _Query_todos(ctx context.Context, field graphql.Coll
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model.Todo)
+	res := resTmp.(*model.TodoPage)
 	fc.Result = res
-	return ec.marshalNTodo2ᚕᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoᚄ(ctx, field.Selections, res)
+	return ec.marshalNTodoPage2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoPage(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Query_todos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_todos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -881,21 +944,24 @@ func (ec *executionContext) fieldContext_Query_todos(_ context.Context, field gr
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Todo_id(ctx, field)
-			case "description":
-				return ec.fieldContext_Todo_description(ctx, field)
-			case "dueDate":
-				return ec.fieldContext_Todo_dueDate(ctx, field)
-			case "fileId":
-				return ec.fieldContext_Todo_fileId(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Todo_createdAt(ctx, field)
-			case "updatedAt":
-				return ec.fieldContext_Todo_updatedAt(ctx, field)
+			case "total":
+				return ec.fieldContext_TodoPage_total(ctx, field)
+			case "items":
+				return ec.fieldContext_TodoPage_items(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Todo", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type TodoPage", field.Name)
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_todos_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -1353,6 +1419,108 @@ func (ec *executionContext) fieldContext_Todo_updatedAt(_ context.Context, field
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TodoPage_total(ctx context.Context, field graphql.CollectedField, obj *model.TodoPage) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_TodoPage_total(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Total, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_TodoPage_total(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TodoPage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TodoPage_items(ctx context.Context, field graphql.CollectedField, obj *model.TodoPage) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_TodoPage_items(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Items, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Todo)
+	fc.Result = res
+	return ec.marshalNTodo2ᚕᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_TodoPage_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TodoPage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Todo_id(ctx, field)
+			case "description":
+				return ec.fieldContext_Todo_description(ctx, field)
+			case "dueDate":
+				return ec.fieldContext_Todo_dueDate(ctx, field)
+			case "fileId":
+				return ec.fieldContext_Todo_fileId(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Todo_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Todo_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Todo", field.Name)
 		},
 	}
 	return fc, nil
@@ -3309,6 +3477,129 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj any) (model.PageInput, error) {
+	var it model.PageInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"limit", "offset"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "limit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+			data, err := ec.unmarshalNInt2int(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Limit = data
+		case "offset":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("offset"))
+			data, err := ec.unmarshalNInt2int(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Offset = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputTodoFilter(ctx context.Context, obj any) (model.TodoFilter, error) {
+	var it model.TodoFilter
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"q", "dueFrom", "dueTo", "hasFile"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "q":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("q"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Q = data
+		case "dueFrom":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("dueFrom"))
+			data, err := ec.unmarshalOTime2ᚖtimeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DueFrom = data
+		case "dueTo":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("dueTo"))
+			data, err := ec.unmarshalOTime2ᚖtimeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DueTo = data
+		case "hasFile":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("hasFile"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.HasFile = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputTodoSort(ctx context.Context, obj any) (model.TodoSort, error) {
+	var it model.TodoSort
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	if _, present := asMap["field"]; !present {
+		asMap["field"] = "UPDATED_AT"
+	}
+	if _, present := asMap["direction"]; !present {
+		asMap["direction"] = "DESC"
+	}
+
+	fieldsInOrder := [...]string{"field", "direction"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "field":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("field"))
+			data, err := ec.unmarshalNTodoSortField2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoSortField(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Field = data
+		case "direction":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("direction"))
+			data, err := ec.unmarshalNSortDirection2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐSortDirection(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Direction = data
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
@@ -3542,6 +3833,50 @@ func (ec *executionContext) _Todo(ctx context.Context, sel ast.SelectionSet, obj
 			}
 		case "updatedAt":
 			out.Values[i] = ec._Todo_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var todoPageImplementors = []string{"TodoPage"}
+
+func (ec *executionContext) _TodoPage(ctx context.Context, sel ast.SelectionSet, obj *model.TodoPage) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, todoPageImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TodoPage")
+		case "total":
+			out.Values[i] = ec._TodoPage_total(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "items":
+			out.Values[i] = ec._TodoPage_items(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -3935,6 +4270,37 @@ func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.Selec
 	return res
 }
 
+func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v any) (int, error) {
+	res, err := graphql.UnmarshalInt(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalInt(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
+func (ec *executionContext) unmarshalNPageInput2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐPageInput(ctx context.Context, v any) (model.PageInput, error) {
+	res, err := ec.unmarshalInputPageInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNSortDirection2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐSortDirection(ctx context.Context, v any) (model.SortDirection, error) {
+	var res model.SortDirection
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSortDirection2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐSortDirection(ctx context.Context, sel ast.SelectionSet, v model.SortDirection) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalString(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -4023,6 +4389,30 @@ func (ec *executionContext) marshalNTodo2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋ
 		return graphql.Null
 	}
 	return ec._Todo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNTodoPage2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoPage(ctx context.Context, sel ast.SelectionSet, v model.TodoPage) graphql.Marshaler {
+	return ec._TodoPage(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNTodoPage2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoPage(ctx context.Context, sel ast.SelectionSet, v *model.TodoPage) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._TodoPage(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNTodoSortField2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoSortField(ctx context.Context, v any) (model.TodoSortField, error) {
+	var res model.TodoSortField
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNTodoSortField2githubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoSortField(ctx context.Context, sel ast.SelectionSet, v model.TodoSortField) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) unmarshalNUpload2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚐUpload(ctx context.Context, v any) (graphql.Upload, error) {
@@ -4342,11 +4732,45 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return res
 }
 
+func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v any) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalTime(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOTime2ᚖtimeᚐTime(ctx context.Context, sel ast.SelectionSet, v *time.Time) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalTime(*v)
+	return res
+}
+
 func (ec *executionContext) marshalOTodo2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodo(ctx context.Context, sel ast.SelectionSet, v *model.Todo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Todo(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOTodoFilter2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoFilter(ctx context.Context, v any) (*model.TodoFilter, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputTodoFilter(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalOTodoSort2ᚖgithubᚗcomᚋdelaramᚋGoTasticᚋinternalᚋdeliveryᚋgraphqlᚋmodelᚐTodoSort(ctx context.Context, v any) (*model.TodoSort, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputTodoSort(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {

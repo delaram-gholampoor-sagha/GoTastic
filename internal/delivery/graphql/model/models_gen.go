@@ -3,10 +3,19 @@
 package model
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
 	"time"
 )
 
 type Mutation struct {
+}
+
+type PageInput struct {
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
 }
 
 type Query struct {
@@ -19,4 +28,135 @@ type Todo struct {
 	FileID      *string   `json:"fileId,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type TodoFilter struct {
+	Q       *string    `json:"q,omitempty"`
+	DueFrom *time.Time `json:"dueFrom,omitempty"`
+	DueTo   *time.Time `json:"dueTo,omitempty"`
+	HasFile *bool      `json:"hasFile,omitempty"`
+}
+
+type TodoPage struct {
+	Total int     `json:"total"`
+	Items []*Todo `json:"items"`
+}
+
+type TodoSort struct {
+	Field     TodoSortField `json:"field"`
+	Direction SortDirection `json:"direction"`
+}
+
+type SortDirection string
+
+const (
+	SortDirectionAsc  SortDirection = "ASC"
+	SortDirectionDesc SortDirection = "DESC"
+)
+
+var AllSortDirection = []SortDirection{
+	SortDirectionAsc,
+	SortDirectionDesc,
+}
+
+func (e SortDirection) IsValid() bool {
+	switch e {
+	case SortDirectionAsc, SortDirectionDesc:
+		return true
+	}
+	return false
+}
+
+func (e SortDirection) String() string {
+	return string(e)
+}
+
+func (e *SortDirection) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SortDirection(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SortDirection", str)
+	}
+	return nil
+}
+
+func (e SortDirection) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SortDirection) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SortDirection) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type TodoSortField string
+
+const (
+	TodoSortFieldCreatedAt   TodoSortField = "CREATED_AT"
+	TodoSortFieldDueDate     TodoSortField = "DUE_DATE"
+	TodoSortFieldUpdatedAt   TodoSortField = "UPDATED_AT"
+	TodoSortFieldDescription TodoSortField = "DESCRIPTION"
+)
+
+var AllTodoSortField = []TodoSortField{
+	TodoSortFieldCreatedAt,
+	TodoSortFieldDueDate,
+	TodoSortFieldUpdatedAt,
+	TodoSortFieldDescription,
+}
+
+func (e TodoSortField) IsValid() bool {
+	switch e {
+	case TodoSortFieldCreatedAt, TodoSortFieldDueDate, TodoSortFieldUpdatedAt, TodoSortFieldDescription:
+		return true
+	}
+	return false
+}
+
+func (e TodoSortField) String() string {
+	return string(e)
+}
+
+func (e *TodoSortField) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = TodoSortField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid TodoSortField", str)
+	}
+	return nil
+}
+
+func (e TodoSortField) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *TodoSortField) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e TodoSortField) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }

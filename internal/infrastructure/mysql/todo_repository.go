@@ -3,23 +3,21 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/delaram/GoTastic/internal/domain"
 	"github.com/delaram/GoTastic/internal/repository"
 	"github.com/delaram/GoTastic/pkg/logger"
 )
 
-
 type TodoRepository struct {
 	db     *sql.DB
 	logger logger.Logger
 }
 
-
 func NewTodoRepository(db *sql.DB, logger logger.Logger) repository.TodoRepository {
 	return &TodoRepository{db: db, logger: logger}
 }
-
 
 func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
@@ -39,7 +37,6 @@ func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) erro
 	}
 	return err
 }
-
 
 func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoItem, error) {
 	query := `
@@ -67,7 +64,6 @@ func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoIt
 
 	return &todo, nil
 }
-
 
 func (r *TodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	query := `
@@ -112,7 +108,6 @@ func (r *TodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	return todos, nil
 }
 
-
 func (r *TodoRepository) Update(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
 		UPDATE todo_items
@@ -145,7 +140,98 @@ func (r *TodoRepository) Update(ctx context.Context, todo *domain.TodoItem) erro
 	return nil
 }
 
-				
+func (r *TodoRepository) ListPaged(
+	ctx context.Context,
+	f domain.TodoFilter,
+	s domain.TodoSort,
+	limit, offset int,
+) ([]*domain.TodoItem, int64, error) {
+	args := []any{}
+	conds := []string{"1=1"}
+
+	if f.Q != nil && *f.Q != "" {
+		conds = append(conds, "description LIKE ?")
+		args = append(args, "%"+*f.Q+"%")
+	}
+	if f.DueFrom != nil {
+		conds = append(conds, "due_date >= ?")
+		args = append(args, *f.DueFrom)
+	}
+	if f.DueTo != nil {
+		conds = append(conds, "due_date <= ?")
+		args = append(args, *f.DueTo)
+	}
+	if f.HasFile != nil {
+		if *f.HasFile {
+			conds = append(conds, "file_id IS NOT NULL AND file_id <> ''")
+		} else {
+			conds = append(conds, "(file_id IS NULL OR file_id = '')")
+		}
+	}
+
+	field := "updated_at"
+	switch s.Field {
+	case domain.SortCreatedAt:
+		field = "created_at"
+	case domain.SortDueDate:
+		field = "due_date"
+	case domain.SortUpdatedAt:
+		field = "updated_at"
+	case domain.SortDescription:
+		field = "description"
+	}
+	dir := "DESC"
+	if s.Direction == domain.SortAsc {
+		dir = "ASC"
+	}
+	orderBy := field + " " + dir
+
+	where := strings.Join(conds, " AND ")
+
+	var total int64
+	countSQL := "SELECT COUNT(*) FROM todo_items WHERE " + where
+	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+		r.logger.Error("ListPaged: count failed", err)
+		return nil, 0, err
+	}
+
+	pageSQL := `
+		SELECT id, description, due_date, file_id, created_at, updated_at
+		FROM todo_items
+		WHERE ` + where + `
+		ORDER BY ` + orderBy + `
+		LIMIT ? OFFSET ?`
+	pageArgs := append(append([]any{}, args...), limit, offset)
+
+	rows, err := r.db.QueryContext(ctx, pageSQL, pageArgs...)
+	if err != nil {
+		r.logger.Error("ListPaged: query failed", err)
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var out []*domain.TodoItem
+	for rows.Next() {
+		var t domain.TodoItem
+		if err := rows.Scan(
+			&t.ID,
+			&t.Description,
+			&t.DueDate,
+			&t.FileID,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return out, total, nil
+}
+
 func (r *TodoRepository) Delete(ctx context.Context, id string) error {
 	query := `
 		DELETE FROM todo_items

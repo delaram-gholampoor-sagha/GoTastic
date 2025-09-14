@@ -28,22 +28,27 @@ func (r *mutationResolver) CreateTodo(ctx context.Context, description string, d
 }
 
 // UpdateTodo is the resolver for the updateTodo field.
-func (r *mutationResolver) UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (bool, error) {
+func (r *mutationResolver) UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (*model.Todo, error) {
 	uid, err := uuid.Parse(id)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	var fid string
 	if fileID != nil {
 		fid = *fileID
 	}
-	err = r.TodoUC.UpdateTodoItem(ctx, &domain.TodoItem{
+	if err := r.TodoUC.UpdateTodoItem(ctx, &domain.TodoItem{
 		ID: uid, Description: description, DueDate: dueDate, FileID: fid,
-	})
-	if err != nil {
-		return false, err
+	}); err != nil {
+		return nil, err
 	}
-	return true, nil
+
+	// fetch the updated entity so we return the full Todo
+	after, err := r.TodoUC.GetTodoItem(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return toModelTodoPtr(after), nil
 }
 
 // DeleteTodo is the resolver for the deleteTodo field.
@@ -73,12 +78,52 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 }
 
 // Todos is the resolver for the todos field.
-func (r *queryResolver) Todos(ctx context.Context) ([]*model.Todo, error) {
-	items, err := r.TodoUC.ListTodoItems(ctx) // ([]*domain.TodoItem)
+func (r *queryResolver) Todos(ctx context.Context, page model.PageInput, filter *model.TodoFilter, sort *model.TodoSort) (*model.TodoPage, error) {
+	// guardrails
+	if page.Limit <= 0 || page.Limit > 100 {
+		page.Limit = 20
+	}
+	if page.Offset < 0 {
+		page.Offset = 0
+	}
+
+	// translate filter/sort to domain types
+	df := domain.TodoFilter{}
+	if filter != nil {
+		df.Q = filter.Q
+		df.DueFrom = filter.DueFrom
+		df.DueTo = filter.DueTo
+		df.HasFile = filter.HasFile
+	}
+
+	ds := domain.TodoSort{Field: domain.SortUpdatedAt, Direction: domain.SortDesc}
+	if sort != nil {
+		switch sort.Field {
+		case model.TodoSortFieldCreatedAt:
+			ds.Field = domain.SortCreatedAt
+		case model.TodoSortFieldDueDate:
+			ds.Field = domain.SortDueDate
+		case model.TodoSortFieldUpdatedAt:
+			ds.Field = domain.SortUpdatedAt
+		case model.TodoSortFieldDescription:
+			ds.Field = domain.SortDescription
+		}
+		if sort.Direction == model.SortDirectionAsc {
+			ds.Direction = domain.SortAsc
+		} else {
+			ds.Direction = domain.SortDesc
+		}
+	}
+
+	items, total, err := r.TodoUC.ListTodoItemsPaged(ctx, df, ds, page.Limit, page.Offset)
 	if err != nil {
 		return nil, err
 	}
-	return toModelTodosPtr(items), nil
+
+	return &model.TodoPage{
+		Total: int(total),
+		Items: toModelTodosPtr(items),
+	}, nil
 }
 
 // Todo is the resolver for the todo field.
