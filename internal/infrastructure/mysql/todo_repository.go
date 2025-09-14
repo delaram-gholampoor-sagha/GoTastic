@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 
 	"github.com/delaram/GoTastic/internal/domain"
 	"github.com/delaram/GoTastic/internal/repository"
@@ -19,6 +20,47 @@ func NewTodoRepository(db *sql.DB, logger logger.Logger) repository.TodoReposito
 	return &TodoRepository{db: db, logger: logger}
 }
 
+func (r *TodoRepository) BeginTx(ctx context.Context) (repository.Tx, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{}) // read-write
+	if err != nil {
+		return nil, err
+	}
+	return &sqlTx{tx}, nil
+}
+
+// ---- CreateTx (used by the outbox pattern) ----
+func (r *TodoRepository) CreateTx(ctx context.Context, tx repository.Tx, t *domain.TodoItem) error {
+	sqltx := tx.(*sqlTx).Tx
+
+	// Adjust table and column names to your schema.
+	// Assuming: todos(id, description, due_date, file_id, created_at, updated_at)
+	_, err := sqltx.ExecContext(ctx, `
+		INSERT INTO todos (id, description, due_date, file_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`,
+		t.ID.String(),
+		t.Description,
+		toNullTime(t.DueDate),
+		nullOrString(t.FileID),
+		t.CreatedAt.UTC(),
+		t.UpdatedAt.UTC(),
+	)
+	return err
+}
+
+func nullOrString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func toNullTime(tt time.Time) any {
+	if tt.IsZero() {
+		return nil
+	}
+	return tt.UTC()
+}
 func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) error {
 	query := `
 		INSERT INTO todo_items (id, description, due_date, file_id)

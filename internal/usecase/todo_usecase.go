@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/delaram/GoTastic/internal/domain"
@@ -15,19 +17,28 @@ type TodoUseCase struct {
 	todoRepo        repository.TodoRepository
 	fileRepo        repository.FileRepository
 	cacheRepo       repository.CacheRepository
-	streamPublisher domain.StreamPublisher
+	streamPublisher repository.StreamPublisher
+	outboxRepo      repository.OutboxRepository
 }
 
-func NewTodoUseCase(logger logger.Logger, todoRepo repository.TodoRepository, fileRepo repository.FileRepository, cacheRepo repository.CacheRepository, streamPublisher domain.StreamPublisher) *TodoUseCase {
+func NewTodoUseCase(logger logger.Logger,
+	todoRepo repository.TodoRepository,
+	fileRepo repository.FileRepository,
+	cacheRepo repository.CacheRepository,
+	streamPublisher repository.StreamPublisher,
+	outboxRepo repository.OutboxRepository,
+) *TodoUseCase {
 	return &TodoUseCase{
 		logger:          logger,
 		todoRepo:        todoRepo,
 		fileRepo:        fileRepo,
 		cacheRepo:       cacheRepo,
 		streamPublisher: streamPublisher,
+		outboxRepo:      outboxRepo,
 	}
 }
 
+// internal/usecase/todo_usecase.go (modified)
 func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, dueDate time.Time, fileID string) (*domain.TodoItem, error) {
 	if fileID != "" {
 		exists, err := u.fileRepo.Exists(ctx, fileID)
@@ -45,23 +56,53 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		Description: description,
 		DueDate:     dueDate,
 		FileID:      fileID,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
 	}
 
-	if err := u.todoRepo.Create(ctx, todo); err != nil {
+	// Start Tx from the same DB used by todoRepo.
+	// If your TodoRepository implements TxStarter, call it here.
+	txStarter, ok := u.todoRepo.(repository.TxStarter)
+	if !ok {
+		return nil, fmt.Errorf("todoRepo does not support transactions")
+	}
+	tx, err := txStarter.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) // no-op if committed
+
+	if err := u.todoRepo.CreateTx(ctx, tx, todo); err != nil {
 		u.logger.Error("Failed to create todo", err)
 		return nil, err
 	}
 
+	// Prepare event payload
+
+	payload, _ := json.Marshal(todo)
+
+	// Enqueue outbox message atomically
+	if err := u.outboxRepo.Insert(ctx, tx, repository.OutboxMessage{
+		AggregateType: "todo",
+		AggregateID:   todo.ID.String(),
+		EventType:     "todo.created",
+		Payload:       payload,
+		Headers:       map[string]string{"source": "api", "schema": "v1"},
+	}); err != nil {
+		u.logger.Error("Failed to write outbox", err)
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	// Cache invalidation AFTER commit (best-effort)
 	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
 		u.logger.Warn("Failed to invalidate cache", err)
 	}
 
-	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
-		u.logger.Warn("Failed to publish todo item to stream", err)
-	}
-
+	// IMPORTANT: do NOT publish directly here anymore.
 	return todo, nil
 }
 

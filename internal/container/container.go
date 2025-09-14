@@ -27,17 +27,19 @@ import (
 )
 
 type Container struct {
-	Config      *config.Config
-	Logger      logger.Logger
-	DB          *sql.DB
-	Redis       *redis.Client
-	S3Client    *s3.Client
-	TodoRepo    repository.TodoRepository
-	FileRepo    repository.FileRepository
-	CacheRepo   repository.CacheRepository
-	TodoUseCase *usecase.TodoUseCase
-	Router      *gin.Engine
-	Response    *response.Response
+	Config          *config.Config
+	Logger          logger.Logger
+	DB              *sql.DB
+	Redis           *redis.Client
+	S3Client        *s3.Client
+	TodoRepo        repository.TodoRepository
+	FileRepo        repository.FileRepository
+	CacheRepo       repository.CacheRepository
+	TodoUseCase     *usecase.TodoUseCase
+	OutboxRepo      repository.OutboxRepository
+	StreamPublisher repository.StreamPublisher
+	Router          *gin.Engine
+	Response        *response.Response
 }
 
 func NewContainer(cfg *config.Config) (*Container, error) {
@@ -89,11 +91,12 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	}
 
 	todoRepo := mysqlinfra.NewTodoRepository(db, log)
+	outboxRepo := mysqlinfra.NewOutboxRepo(db)
 	fileRepo := s3infra.NewFileRepository(s3Client, cfg.S3.Bucket)
 	cacheRepo := repository.NewRedisCacheRepository(log, redisClient)
 	streamPublisher := redisinfra.NewStreamPublisher(redisClient, log)
 
-	todoUseCase := usecase.NewTodoUseCase(log, todoRepo, fileRepo, cacheRepo, streamPublisher)
+	todoUseCase := usecase.NewTodoUseCase(log, todoRepo, fileRepo, cacheRepo, streamPublisher, outboxRepo)
 
 	router := gin.New()
 	router.Use(
@@ -112,17 +115,19 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	resp := response.New(true, nil, "", nil)
 
 	return &Container{
-		Config:      cfg,
-		Logger:      log,
-		DB:          db,
-		Redis:       redisClient,
-		S3Client:    s3Client,
-		TodoRepo:    todoRepo,
-		FileRepo:    fileRepo,
-		CacheRepo:   cacheRepo,
-		TodoUseCase: todoUseCase,
-		Router:      router,
-		Response:    resp,
+		Config:          cfg,
+		Logger:          log,
+		DB:              db,
+		Redis:           redisClient,
+		S3Client:        s3Client,
+		TodoRepo:        todoRepo,
+		FileRepo:        fileRepo,
+		CacheRepo:       cacheRepo,
+		TodoUseCase:     todoUseCase,
+		OutboxRepo:      outboxRepo,
+		StreamPublisher: streamPublisher,
+		Router:          router,
+		Response:        resp,
 	}, nil
 }
 
