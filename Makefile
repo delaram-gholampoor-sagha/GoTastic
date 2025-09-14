@@ -35,13 +35,23 @@ clean:
 	rm -rf bin/
 	rm -rf tmp/
 
-# Run database migrations up
 migrate-up:
-	migrate -path migrations -database "mysql://root:password@tcp(localhost:3306)/todo" up
+	docker run --rm \
+	  --network docker_default \
+	  -v $(PWD)/migrations:/migrations \
+	  -e MYSQL_ROOT_PASSWORD=$${MYSQL_ROOT_PASSWORD} \
+	  migrate/migrate:4 \
+	  -path=/migrations \
+	  -database "mysql://root:$${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/todo?multiStatements=true" up
 
-# Run database migrations down
 migrate-down:
-	migrate -path migrations -database "mysql://root:password@tcp(localhost:3306)/todo" down
+	docker run --rm \
+	  --network docker_default \
+	  -v $(PWD)/migrations:/migrations \
+	  -e MYSQL_ROOT_PASSWORD=$${MYSQL_ROOT_PASSWORD} \
+	  migrate/migrate:4 \
+	  -path=/migrations \
+	  -database "mysql://root:$${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/todo?multiStatements=true" down
 
 # Initialize S3 bucket
 init-s3:

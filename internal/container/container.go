@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/delaram/GoTastic/internal/boot"
 	"github.com/delaram/GoTastic/internal/delivery/http"
 	mysqlinfra "github.com/delaram/GoTastic/internal/infrastructure/mysql"
 	redisinfra "github.com/delaram/GoTastic/internal/infrastructure/redis"
@@ -51,13 +52,9 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 
 	validator.Init()
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.Name,
-	)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&multiStatements=true&loc=Local",
+		cfg.Database.User, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
+
 	gormDB, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -68,6 +65,9 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
 
+	if err := boot.RunMigrations(db, cfg.Database.Name, log); err != nil {
+		return nil, fmt.Errorf("migrations failed: %w", err)
+	}
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
 		Password: cfg.Redis.Password,

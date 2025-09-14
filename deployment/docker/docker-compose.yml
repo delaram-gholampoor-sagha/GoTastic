@@ -32,6 +32,23 @@ services:
       timeout: 10s
       retries: 3
 
+  # ⬇️ One-shot migrations container
+  migrate:
+    image: migrate/migrate:4
+    networks:
+      - app-network
+    volumes:
+      # path is relative to THIS compose file (deployment/docker/docker-compose.yml)
+      - ../../migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=mysql://root:password@tcp(mysql:3306)/todo?multiStatements=true
+      - up
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   mysql:
     image: mysql:8.0
     environment:
@@ -39,7 +56,8 @@ services:
       - MYSQL_DATABASE=todo
     volumes:
       - mysql-data:/var/lib/mysql
-      - ../../migrations:/docker-entrypoint-initdb.d
+      # ❌ remove this to avoid MySQL auto-running your migration files
+      # - ../../migrations:/docker-entrypoint-initdb.d
     networks:
       - app-network
     healthcheck:
@@ -96,4 +114,4 @@ volumes:
 
 networks:
   app-network:
-    driver: bridge 
+    driver: bridge
