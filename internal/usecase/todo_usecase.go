@@ -2,6 +2,9 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/delaram/GoTastic/internal/domain"
@@ -15,20 +18,29 @@ type TodoUseCase struct {
 	todoRepo        repository.TodoRepository
 	fileRepo        repository.FileRepository
 	cacheRepo       repository.CacheRepository
-	streamPublisher domain.StreamPublisher
+	streamPublisher repository.StreamPublisher
+	outboxRepo      repository.OutboxRepository
 }
 
-func NewTodoUseCase(logger logger.Logger, todoRepo repository.TodoRepository, fileRepo repository.FileRepository, cacheRepo repository.CacheRepository, streamPublisher domain.StreamPublisher) *TodoUseCase {
+func NewTodoUseCase(logger logger.Logger,
+	todoRepo repository.TodoRepository,
+	fileRepo repository.FileRepository,
+	cacheRepo repository.CacheRepository,
+	streamPublisher repository.StreamPublisher,
+	outboxRepo repository.OutboxRepository,
+) *TodoUseCase {
 	return &TodoUseCase{
 		logger:          logger,
 		todoRepo:        todoRepo,
 		fileRepo:        fileRepo,
 		cacheRepo:       cacheRepo,
 		streamPublisher: streamPublisher,
+		outboxRepo:      outboxRepo,
 	}
 }
 
 func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, dueDate time.Time, fileID string) (*domain.TodoItem, error) {
+	var filePtr *string
 	if fileID != "" {
 		exists, err := u.fileRepo.Exists(ctx, fileID)
 		if err != nil {
@@ -38,19 +50,46 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		if !exists {
 			return nil, repository.ErrNotFound
 		}
+		filePtr = &fileID
 	}
 
 	todo := &domain.TodoItem{
-		ID:          uuid.New(),
+		UUID:        uuid.NewString(),
 		Description: description,
-		DueDate:     dueDate,
-		FileID:      fileID,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		DueDate:     &dueDate,
+		FileID:      filePtr,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	txStarter, ok := u.todoRepo.(repository.TxStarter)
+	if !ok {
+		return nil, fmt.Errorf("todoRepo does not support transactions")
+	}
+	tx, err := txStarter.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := u.todoRepo.CreateTx(ctx, tx, todo); err != nil {
+		u.logger.Error("Failed to create todo", err)
+		return nil, err
 	}
 
-	if err := u.todoRepo.Create(ctx, todo); err != nil {
-		u.logger.Error("Failed to create todo", err)
+	payload, _ := json.Marshal(todo)
+
+	if err := u.outboxRepo.Insert(ctx, tx, repository.OutboxMessage{
+		AggregateType: "todo",
+		AggregateID:   todo.UUID,
+		EventType:     "todo.created",
+		Payload:       payload,
+		Headers:       map[string]string{"source": "api", "schema": "v1"},
+	}); err != nil {
+		u.logger.Error("outbox", err)
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
@@ -58,11 +97,19 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		u.logger.Warn("Failed to invalidate cache", err)
 	}
 
-	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
-		u.logger.Warn("Failed to publish todo item to stream", err)
-	}
-
 	return todo, nil
+}
+
+// usecase/todo.go (add method)
+func (u *TodoUseCase) ListTodoItemsPaged(ctx context.Context, f domain.TodoFilter, s domain.TodoSort, limit, offset int) ([]*domain.TodoItem, int64, error) {
+	// enforce sane caps
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return u.todoRepo.ListPaged(ctx, f, s, limit, offset)
 }
 
 func (u *TodoUseCase) GetTodoItem(ctx context.Context, id string) (*domain.TodoItem, error) {
@@ -113,8 +160,8 @@ func (u *TodoUseCase) ListTodoItems(ctx context.Context) ([]*domain.TodoItem, er
 }
 
 func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem) error {
-	if todo.FileID != "" {
-		exists, err := u.fileRepo.Exists(ctx, todo.FileID)
+	if todo.FileID != nil && *todo.FileID != "" {
+		exists, err := u.fileRepo.Exists(ctx, *todo.FileID)
 		if err != nil {
 			u.logger.Error("Failed to check file existence", err)
 			return err
@@ -131,11 +178,8 @@ func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem)
 		return err
 	}
 
-	if err := u.cacheRepo.Delete(ctx, "todo:"+todo.ID.String()); err != nil {
+	if err := u.cacheRepo.Delete(ctx, "todo:"+strconv.FormatUint(todo.ID, 10)); err != nil {
 		u.logger.Warn("Failed to invalidate todo cache", err)
-	}
-	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
-		u.logger.Warn("Failed to invalidate todos cache", err)
 	}
 
 	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
@@ -154,11 +198,13 @@ func (u *TodoUseCase) DeleteTodoItem(ctx context.Context, id string) error {
 	if err := u.cacheRepo.Delete(ctx, "todo:"+id); err != nil {
 		u.logger.Warn("Failed to invalidate todo cache", err)
 	}
-	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
-		u.logger.Warn("Failed to invalidate todos cache", err)
+
+	idUint, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		u.logger.Error("Invalid ID format", err)
+		return fmt.Errorf("invalid ID format: %w", err)
 	}
-												
-	todo := &domain.TodoItem{ID: uuid.MustParse(id)}
+	todo := &domain.TodoItem{ID: idUint}
 	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
 		u.logger.Warn("Failed to publish todo item to stream", err)
 	}

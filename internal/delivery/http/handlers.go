@@ -158,26 +158,42 @@ func (h *Handler) GetTodoItem(c *gin.Context) {
 func (h *Handler) UpdateTodoItem(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid todo ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid todo id"})
+		return
+	}
+	// Validate format only — don't assign to numeric ID
+	if _, err := uuid.Parse(id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid todo id format"})
 		return
 	}
 
-	parsedID, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid todo ID format"})
+	// Define a request DTO instead of binding directly into domain
+	var req struct {
+		Description string    `json:"description" binding:"required"`
+		DueDate     time.Time `json:"dueDate"    binding:"required"` // RFC3339
+		FileID      *string   `json:"fileId"`                        // optional
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Error("decode request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
-	var todo domain.TodoItem
-	if err := c.ShouldBindJSON(&todo); err != nil {
-		h.logger.Error("Failed to decode request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
+	// Normalize empty fileId -> nil (so you can clear it intentionally by omitting)
+	if req.FileID != nil && *req.FileID == "" {
+		req.FileID = nil
 	}
-	todo.ID = parsedID
-	if err := h.todoUseCase.UpdateTodoItem(c.Request.Context(), &todo); err != nil {
-		h.logger.Error("Failed to update todo item", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update todo item"})
+
+	todo := &domain.TodoItem{
+		UUID:        id, // <-- public key for lookups
+		Description: req.Description,
+		DueDate:     &req.DueDate, // domain expects *time.Time
+		FileID:      req.FileID,   // *string or nil
+	}
+
+	if err := h.todoUseCase.UpdateTodoItem(c.Request.Context(), todo); err != nil {
+		h.logger.Error("update todo item", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update todo item"})
 		return
 	}
 	c.Status(http.StatusNoContent)

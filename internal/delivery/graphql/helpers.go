@@ -1,6 +1,8 @@
 package graphql
 
 import (
+	"time"
+
 	"github.com/delaram/GoTastic/internal/delivery/graphql/model"
 	"github.com/delaram/GoTastic/internal/domain"
 )
@@ -9,19 +11,24 @@ func toModelTodoPtr(t *domain.TodoItem) *model.Todo {
 	if t == nil {
 		return nil
 	}
-	id := t.ID.String()
-	var filePtr *string
-	if t.FileID != "" {
-		f := t.FileID
-		filePtr = &f
+
+	var due time.Time
+	if t.DueDate != nil {
+		due = *t.DueDate
 	}
+
+	var filePtr *string
+	if t.FileID != nil && *t.FileID != "" {
+		filePtr = t.FileID
+	}
+
 	return &model.Todo{
-		ID:          id,
+		ID:          t.UUID,
 		Description: t.Description,
-		DueDate:     t.DueDate, // time.Time
+		DueDate:     due,
 		FileID:      filePtr,
-		CreatedAt:   t.CreatedAt, // time.Time
-		UpdatedAt:   t.UpdatedAt, // time.Time
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
 	}
 }
 

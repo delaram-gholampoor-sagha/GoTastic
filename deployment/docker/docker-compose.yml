@@ -8,11 +8,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=password
-      - DB_NAME=todo
+      - DATABASE_HOST=mysql
+      - DATABASE_PORT=3306
+      - DATABASE_USER=root
+      - DATABASE_PASSWORD=password
+      - DATABASE_NAME=todo
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - S3_ENDPOINT=http://localstack:4566
@@ -32,6 +32,22 @@ services:
       timeout: 10s
       retries: 3
 
+  # ⬇️ One-shot migrations container
+  migrate:
+    image: migrate/migrate:4
+    networks:
+      - app-network
+    volumes:
+      - /home/delaram-mahbano/Code/GoTastic/migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=mysql://root:password@tcp(mysql:3306)/todo?multiStatements=true
+      - up
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   mysql:
     image: mysql:8.0
     environment:
@@ -39,7 +55,8 @@ services:
       - MYSQL_DATABASE=todo
     volumes:
       - mysql-data:/var/lib/mysql
-      - ../../migrations:/docker-entrypoint-initdb.d
+      # ❌ remove this to avoid MySQL auto-running your migration files
+      # - ../../migrations:/docker-entrypoint-initdb.d
     networks:
       - app-network
     healthcheck:
@@ -96,4 +113,4 @@ volumes:
 
 networks:
   app-network:
-    driver: bridge 
+    driver: bridge

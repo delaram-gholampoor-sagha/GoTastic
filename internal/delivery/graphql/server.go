@@ -20,7 +20,13 @@ func RegisterGinGraphQL(r *gin.Engine, todoUC *usecase.TodoUseCase, fileUC *usec
 	pg, gql := NewHandlers(todoUC, fileUC)
 	g := r.Group("/graphql")
 	{
+		// Playground
+		g.GET("", gin.WrapH(pg))
 		g.GET("/", gin.WrapH(pg))
+
+		// GraphQL POST
+		g.POST("", gin.WrapH(gql))
+		g.POST("/", gin.WrapH(gql))
 		g.POST("/query", gin.WrapH(gql))
 	}
 }

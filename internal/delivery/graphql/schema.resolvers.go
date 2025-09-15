@@ -11,7 +11,6 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/delaram/GoTastic/internal/delivery/graphql/model"
 	"github.com/delaram/GoTastic/internal/domain"
-	"github.com/google/uuid"
 )
 
 // CreateTodo is the resolver for the createTodo field.
@@ -20,30 +19,37 @@ func (r *mutationResolver) CreateTodo(ctx context.Context, description string, d
 	if fileID != nil {
 		fid = *fileID
 	}
-	created, err := r.TodoUC.CreateTodoItem(ctx, description, dueDate, fid) // (*domain.TodoItem)
+	todo, err := r.TodoUC.CreateTodoItem(ctx, description, dueDate, fid)
 	if err != nil {
 		return nil, err
 	}
-	return toModelTodoPtr(created), nil
+	return toModelTodoPtr(todo), nil
 }
 
 // UpdateTodo is the resolver for the updateTodo field.
-func (r *mutationResolver) UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (bool, error) {
-	uid, err := uuid.Parse(id)
+func (r *mutationResolver) UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (*model.Todo, error) {
+	var fid *string
+	if fileID != nil && *fileID != "" {
+		fid = fileID
+	}
+
+	// Build a minimal domain object using UUID (not numeric ID)
+	t := &domain.TodoItem{
+		UUID:        id,
+		Description: description,
+		DueDate:     &dueDate, // <-- pointer to time
+		FileID:      fid,      // *string (may be nil)
+	}
+
+	if err := r.TodoUC.UpdateTodoItem(ctx, t); err != nil {
+		return nil, err
+	}
+
+	after, err := r.TodoUC.GetTodoItem(ctx, id)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	var fid string
-	if fileID != nil {
-		fid = *fileID
-	}
-	err = r.TodoUC.UpdateTodoItem(ctx, &domain.TodoItem{
-		ID: uid, Description: description, DueDate: dueDate, FileID: fid,
-	})
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	return toModelTodoPtr(after), nil
 }
 
 // DeleteTodo is the resolver for the deleteTodo field.
@@ -73,17 +79,57 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 }
 
 // Todos is the resolver for the todos field.
-func (r *queryResolver) Todos(ctx context.Context) ([]*model.Todo, error) {
-	items, err := r.TodoUC.ListTodoItems(ctx) // ([]*domain.TodoItem)
+func (r *queryResolver) Todos(ctx context.Context, page model.PageInput, filter *model.TodoFilter, sort *model.TodoSort) (*model.TodoPage, error) {
+	// guardrails
+	if page.Limit <= 0 || page.Limit > 100 {
+		page.Limit = 20
+	}
+	if page.Offset < 0 {
+		page.Offset = 0
+	}
+
+	// translate filter/sort to domain types
+	df := domain.TodoFilter{}
+	if filter != nil {
+		df.Q = filter.Q
+		df.DueFrom = filter.DueFrom
+		df.DueTo = filter.DueTo
+		df.HasFile = filter.HasFile
+	}
+
+	ds := domain.TodoSort{Field: domain.SortUpdatedAt, Direction: domain.SortDesc}
+	if sort != nil {
+		switch sort.Field {
+		case model.TodoSortFieldCreatedAt:
+			ds.Field = domain.SortCreatedAt
+		case model.TodoSortFieldDueDate:
+			ds.Field = domain.SortDueDate
+		case model.TodoSortFieldUpdatedAt:
+			ds.Field = domain.SortUpdatedAt
+		case model.TodoSortFieldDescription:
+			ds.Field = domain.SortDescription
+		}
+		if sort.Direction == model.SortDirectionAsc {
+			ds.Direction = domain.SortAsc
+		} else {
+			ds.Direction = domain.SortDesc
+		}
+	}
+
+	items, total, err := r.TodoUC.ListTodoItemsPaged(ctx, df, ds, page.Limit, page.Offset)
 	if err != nil {
 		return nil, err
 	}
-	return toModelTodosPtr(items), nil
+
+	return &model.TodoPage{
+		Total: int(total),
+		Items: toModelTodosPtr(items),
+	}, nil
 }
 
 // Todo is the resolver for the todo field.
 func (r *queryResolver) Todo(ctx context.Context, id string) (*model.Todo, error) {
-	item, err := r.TodoUC.GetTodoItem(ctx, id) // (*domain.TodoItem or nil)
+	item, err := r.TodoUC.GetTodoItem(ctx, id)
 	if err != nil {
 		return nil, err
 	}

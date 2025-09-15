@@ -2,8 +2,12 @@ server:
   port: 8080
   timeout: 60s
 
+orm:
+  default:
+    mysql: root:password@tcp(mysql:3306)/todo?charset=utf8mb4&parseTime=true
+
 database:
-  host: localhost
+  host: mysql
   port: 3306
   name: gotastic
   user: gotastic
