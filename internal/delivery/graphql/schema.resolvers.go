@@ -11,7 +11,6 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/delaram/GoTastic/internal/delivery/graphql/model"
 	"github.com/delaram/GoTastic/internal/domain"
-	"github.com/google/uuid"
 )
 
 // CreateTodo is the resolver for the createTodo field.
@@ -20,30 +19,32 @@ func (r *mutationResolver) CreateTodo(ctx context.Context, description string, d
 	if fileID != nil {
 		fid = *fileID
 	}
-	created, err := r.TodoUC.CreateTodoItem(ctx, description, dueDate, fid) // (*domain.TodoItem)
+	todo, err := r.TodoUC.CreateTodoItem(ctx, description, dueDate, fid)
 	if err != nil {
 		return nil, err
 	}
-	return toModelTodoPtr(created), nil
+	return toModelTodoPtr(todo), nil
 }
 
 // UpdateTodo is the resolver for the updateTodo field.
 func (r *mutationResolver) UpdateTodo(ctx context.Context, id string, description string, dueDate time.Time, fileID *string) (*model.Todo, error) {
-	uid, err := uuid.Parse(id)
-	if err != nil {
-		return nil, err
+	var fid *string
+	if fileID != nil && *fileID != "" {
+		fid = fileID
 	}
-	var fid string
-	if fileID != nil {
-		fid = *fileID
+
+	// Build a minimal domain object using UUID (not numeric ID)
+	t := &domain.TodoItem{
+		UUID:        id,
+		Description: description,
+		DueDate:     &dueDate, // <-- pointer to time
+		FileID:      fid,      // *string (may be nil)
 	}
-	if err := r.TodoUC.UpdateTodoItem(ctx, &domain.TodoItem{
-		ID: uid, Description: description, DueDate: dueDate, FileID: fid,
-	}); err != nil {
+
+	if err := r.TodoUC.UpdateTodoItem(ctx, t); err != nil {
 		return nil, err
 	}
 
-	// fetch the updated entity so we return the full Todo
 	after, err := r.TodoUC.GetTodoItem(ctx, id)
 	if err != nil {
 		return nil, err
@@ -128,7 +129,7 @@ func (r *queryResolver) Todos(ctx context.Context, page model.PageInput, filter 
 
 // Todo is the resolver for the todo field.
 func (r *queryResolver) Todo(ctx context.Context, id string) (*model.Todo, error) {
-	item, err := r.TodoUC.GetTodoItem(ctx, id) // (*domain.TodoItem or nil)
+	item, err := r.TodoUC.GetTodoItem(ctx, id)
 	if err != nil {
 		return nil, err
 	}

@@ -14,9 +14,9 @@ import (
 
 type OutboxDispatcher struct {
 	outbox repository.OutboxRepository
-	// keep your existing publisher; we’ll adapt by event_type
+
 	stream repository.StreamPublisher
-	// config
+
 	batchSize      int
 	lockForSeconds int
 	maxAttempts    int

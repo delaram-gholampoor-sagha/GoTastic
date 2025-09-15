@@ -1,120 +1,176 @@
-// internal/infrastructure/mysql/outbox_repository.go
 package mysql
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"fmt"
+	"log"
 	"time"
 
+	"git.ice.global/packages/beeorm/v4"
+	"github.com/delaram/GoTastic/internal/domain"
 	"github.com/delaram/GoTastic/internal/repository"
-	"github.com/google/uuid"
 )
 
-type sqlTx struct{ *sql.Tx }
+type beeTx struct{ db *beeorm.DB }
 
-func (t *sqlTx) Commit(ctx context.Context) error   { return t.Tx.Commit() }
-func (t *sqlTx) Rollback(ctx context.Context) error { return t.Tx.Rollback() }
+func (t *beeTx) Commit(ctx context.Context) error   { t.db.Commit(); return nil }
+func (t *beeTx) Rollback(ctx context.Context) error { t.db.Rollback(); return nil }
 
 type OutboxRepo struct {
-	db *sql.DB
+	engine *beeorm.Engine
 }
 
-func NewOutboxRepo(db *sql.DB) *OutboxRepo { return &OutboxRepo{db: db} }
+func NewOutboxRepo(engine *beeorm.Engine) *OutboxRepo { return &OutboxRepo{engine: engine} }
 
 func (r *OutboxRepo) BeginTx(ctx context.Context) (repository.Tx, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return &sqlTx{tx}, nil
+	db := r.engine.GetMysql()
+	db.Begin()
+	return &beeTx{db: db}, nil
 }
 
-func (r *OutboxRepo) Insert(ctx context.Context, tx repository.Tx, msg repository.OutboxMessage) error {
-	sqltx := tx.(*sqlTx).Tx
-
-	var headersJSON *string
-	if msg.Headers != nil {
+func (r *OutboxRepo) Insert(_ context.Context, _ repository.Tx, msg repository.OutboxMessage) error {
+	var headersPtr *string
+	if len(msg.Headers) > 0 {
 		b, _ := json.Marshal(msg.Headers)
 		s := string(b)
-		headersJSON = &s
+		headersPtr = &s
 	}
 
-	_, err := sqltx.ExecContext(ctx, `
-        INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload, headers)
-        VALUES (?, ?, ?, JSON_EXTRACT(?, '$'), ?)
-    `, msg.AggregateType, msg.AggregateID, msg.EventType, string(msg.Payload), headersJSON)
-	return err
+	e := &domain.Outbox{
+		AggregateType: msg.AggregateType,
+		AggregateID:   msg.AggregateID,
+		EventType:     msg.EventType,
+		Payload:       msg.Payload,
+		Headers:       headersPtr,
+		Status:        "pending",
+		Attempts:      0,
+		AvailableAt:   time.Now().UTC(),
+	}
+
+	fl := r.engine.NewFlusher()
+	fl.Track(e)
+	return fl.FlushWithCheck()
 }
 
 func (r *OutboxRepo) FetchAndLock(ctx context.Context, limit int, lockForSeconds int) ([]repository.LockedOutboxRow, error) {
-	lockToken := uuid.New().String()
+	tx, err := r.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	db := tx.(*beeTx).db
 	now := time.Now()
-	lockUntil := now.Add(time.Duration(lockForSeconds) * time.Second)
-
-	// MySQL-safe: UPDATE ... ORDER BY ... LIMIT (no subquery-in-IN)
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE outbox
-		SET lock_token = ?, locked_until = ?, status = 'pending'
-		WHERE status = 'pending'
-		  AND available_at <= ?
-		  AND (locked_until IS NULL OR locked_until < ?)
-		ORDER BY id
-		LIMIT ?;
-	`, lockToken, lockUntil, now, now, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	// Read back the rows we just locked
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, aggregate_type, aggregate_id, event_type, payload, attempts
-		FROM outbox
-		WHERE lock_token = ? AND locked_until >= ?
-		ORDER BY id;
-	`, lockToken, now)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	db.Exec(`
+        UPDATE outbox
+        SET status = 'pending'
+        WHERE status = 'pending'
+          AND available_at <= ?
+        ORDER BY id
+        LIMIT ?
+    `, now, limit)
+	rows, close := db.Query(`
+    SELECT id, aggregate_type, aggregate_id, event_type, payload, attempts
+    FROM outbox
+    WHERE status = 'pending'
+      AND available_at <= ?
+    ORDER BY id
+`, now)
+	defer close()
 
 	var out []repository.LockedOutboxRow
 	for rows.Next() {
-		var rID uint64
-		var aggType, aggID, evt string
-		var payload []byte
-		var attempts int
-		if err := rows.Scan(&rID, &aggType, &aggID, &evt, &payload, &attempts); err != nil {
-			return nil, err
+		var (
+			id        uint64
+			aggType   string
+			aggID     string
+			eventType string
+			payload   []byte
+			attempts  int
+		)
+		var scanErr error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					scanErr = fmt.Errorf("panic in rows.Scan: %v", r)
+				}
+			}()
+			rows.Scan(&id, &aggType, &aggID, &eventType, &payload, &attempts)
+		}()
+		if scanErr != nil {
+			log.Printf("Failed to scan row: %v", scanErr)
+			return nil, scanErr
 		}
+		log.Printf("Scanned row: id=%d, aggType=%s, aggID=%s, eventType=%s, attempts=%d", id, aggType, aggID, eventType, attempts)
 		out = append(out, repository.LockedOutboxRow{
-			ID: rID, AggregateType: aggType, AggregateID: aggID, EventType: evt, Payload: payload, Attempts: attempts,
+			ID:            id,
+			AggregateType: aggType,
+			AggregateID:   aggID,
+			EventType:     eventType,
+			Payload:       payload,
+			Attempts:      attempts,
 		})
 	}
-	return out, rows.Err()
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
-
 func (r *OutboxRepo) MarkPublished(ctx context.Context, id uint64) error {
-	_, err := r.db.ExecContext(ctx, `
-        UPDATE outbox
-        SET status = 'published', published_at = NOW(), lock_token = NULL, locked_until = NULL
-        WHERE id = ?
-    `, id)
-	return err
+	var row domain.Outbox
+	if ok := r.engine.LoadByID(id, &row); !ok {
+		return repository.ErrNotFound
+	}
+
+	row.Status = "published"
+
+	fl := r.engine.NewFlusher()
+	fl.Track(&row)
+	return fl.FlushWithCheck()
 }
 
 func (r *OutboxRepo) MarkFailed(ctx context.Context, id uint64, nextAvailableAt string, errMsg string) error {
-	_, err := r.db.ExecContext(ctx, `
-        UPDATE outbox
-        SET status = 'pending',
-            attempts = attempts + 1,
-            available_at = ?,
-            error = ?,
-            lock_token = NULL,
-            locked_until = NULL
-        WHERE id = ?
-    `, nextAvailableAt, truncateErr(errMsg), id)
-	return err
+	var row domain.Outbox
+	if ok := r.engine.LoadByID(id, &row); !ok {
+		return repository.ErrNotFound
+	}
+
+	ts, err := time.Parse(time.RFC3339, nextAvailableAt)
+	if err != nil {
+		if t2, err2 := time.Parse("2006-01-02 15:04:05", nextAvailableAt); err2 == nil {
+			ts = t2
+		} else {
+			ts = time.Now().Add(time.Minute)
+		}
+	}
+
+	row.Status = "pending"
+	row.Attempts = row.Attempts + 1
+	row.AvailableAt = ts
+
+	fl := r.engine.NewFlusher()
+	fl.Track(&row)
+	return fl.FlushWithCheck()
+}
+
+func (r *OutboxRepo) GetByID(ctx context.Context, id uint64) (*domain.Outbox, error) {
+	var row domain.Outbox
+	where := beeorm.NewWhere("ID = ?", id)
+	if ok := r.engine.SearchOne(where, &row); !ok {
+		return nil, repository.ErrNotFound
+	}
+	return &row, nil
+}
+
+func (r *OutboxRepo) Delete(ctx context.Context, id uint64) error {
+	var row domain.Outbox
+	if ok := r.engine.LoadByID(id, &row); !ok {
+		return repository.ErrNotFound
+	}
+	fl := r.engine.NewFlusher()
+	fl.Delete(&row)
+	return fl.FlushWithCheck()
 }
 
 func truncateErr(s string) string {

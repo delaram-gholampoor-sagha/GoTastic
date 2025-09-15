@@ -1,15 +1,14 @@
 scalar Upload
 scalar Time
 
-type Todo {
+type TodoItem {
     id: ID!
     description: String!
-    dueDate: Time!
+    dueDate: String
     fileId: String
-    createdAt: Time!
-    updatedAt: Time!
+    createdAt: String!
+    updatedAt: String!
 }
-
 # ---- NEW: pagination & filtering ----
 input TodoFilter {
     q: String            # matches description (simple LIKE)
@@ -33,18 +32,18 @@ input PageInput {
 
 type TodoPage {
     total: Int!
-    items: [Todo!]!
+    items: [TodoItem!]!
 }
 
 type Query {
     health: String!
-    todos(page: PageInput!, filter: TodoFilter, sort: TodoSort): TodoPage!  # CHANGED
-    todo(id: ID!): Todo
+    todos(page: PageInput!, filter: TodoFilter, sort: TodoSort): TodoPage!
+    todo(id: ID!): TodoItem
 }
 
 type Mutation {
-    createTodo(description: String!, dueDate: Time!, fileId: String): Todo!
-    updateTodo(id: ID!, description: String!, dueDate: Time!, fileId: String): Todo!  # CHANGED
+    createTodo(description: String!, dueDate: Time!, fileId: String): TodoItem!
+    updateTodo(id: ID!, description: String!, dueDate: Time!, fileId: String): TodoItem!
     deleteTodo(id: ID!): Boolean!
 
     uploadFile(file: Upload!): ID!

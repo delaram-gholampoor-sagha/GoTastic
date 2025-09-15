@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/delaram/GoTastic/internal/domain"
@@ -38,8 +39,8 @@ func NewTodoUseCase(logger logger.Logger,
 	}
 }
 
-// internal/usecase/todo_usecase.go (modified)
 func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, dueDate time.Time, fileID string) (*domain.TodoItem, error) {
+	var filePtr *string
 	if fileID != "" {
 		exists, err := u.fileRepo.Exists(ctx, fileID)
 		if err != nil {
@@ -49,19 +50,17 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		if !exists {
 			return nil, repository.ErrNotFound
 		}
+		filePtr = &fileID
 	}
 
 	todo := &domain.TodoItem{
-		ID:          uuid.New(),
+		UUID:        uuid.NewString(),
 		Description: description,
-		DueDate:     dueDate,
-		FileID:      fileID,
+		DueDate:     &dueDate,
+		FileID:      filePtr,
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
 	}
-
-	// Start Tx from the same DB used by todoRepo.
-	// If your TodoRepository implements TxStarter, call it here.
 	txStarter, ok := u.todoRepo.(repository.TxStarter)
 	if !ok {
 		return nil, fmt.Errorf("todoRepo does not support transactions")
@@ -70,26 +69,23 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx) // no-op if committed
+	defer tx.Rollback(ctx)
 
 	if err := u.todoRepo.CreateTx(ctx, tx, todo); err != nil {
 		u.logger.Error("Failed to create todo", err)
 		return nil, err
 	}
 
-	// Prepare event payload
-
 	payload, _ := json.Marshal(todo)
 
-	// Enqueue outbox message atomically
 	if err := u.outboxRepo.Insert(ctx, tx, repository.OutboxMessage{
 		AggregateType: "todo",
-		AggregateID:   todo.ID.String(),
+		AggregateID:   todo.UUID,
 		EventType:     "todo.created",
 		Payload:       payload,
 		Headers:       map[string]string{"source": "api", "schema": "v1"},
 	}); err != nil {
-		u.logger.Error("Failed to write outbox", err)
+		u.logger.Error("outbox", err)
 		return nil, err
 	}
 
@@ -97,12 +93,10 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		return nil, err
 	}
 
-	// Cache invalidation AFTER commit (best-effort)
 	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
 		u.logger.Warn("Failed to invalidate cache", err)
 	}
 
-	// IMPORTANT: do NOT publish directly here anymore.
 	return todo, nil
 }
 
@@ -166,8 +160,8 @@ func (u *TodoUseCase) ListTodoItems(ctx context.Context) ([]*domain.TodoItem, er
 }
 
 func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem) error {
-	if todo.FileID != "" {
-		exists, err := u.fileRepo.Exists(ctx, todo.FileID)
+	if todo.FileID != nil && *todo.FileID != "" {
+		exists, err := u.fileRepo.Exists(ctx, *todo.FileID)
 		if err != nil {
 			u.logger.Error("Failed to check file existence", err)
 			return err
@@ -184,11 +178,8 @@ func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem)
 		return err
 	}
 
-	if err := u.cacheRepo.Delete(ctx, "todo:"+todo.ID.String()); err != nil {
+	if err := u.cacheRepo.Delete(ctx, "todo:"+strconv.FormatUint(todo.ID, 10)); err != nil {
 		u.logger.Warn("Failed to invalidate todo cache", err)
-	}
-	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
-		u.logger.Warn("Failed to invalidate todos cache", err)
 	}
 
 	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
@@ -207,11 +198,13 @@ func (u *TodoUseCase) DeleteTodoItem(ctx context.Context, id string) error {
 	if err := u.cacheRepo.Delete(ctx, "todo:"+id); err != nil {
 		u.logger.Warn("Failed to invalidate todo cache", err)
 	}
-	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
-		u.logger.Warn("Failed to invalidate todos cache", err)
-	}
 
-	todo := &domain.TodoItem{ID: uuid.MustParse(id)}
+	idUint, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		u.logger.Error("Invalid ID format", err)
+		return fmt.Errorf("invalid ID format: %w", err)
+	}
+	todo := &domain.TodoItem{ID: idUint}
 	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
 		u.logger.Warn("Failed to publish todo item to stream", err)
 	}

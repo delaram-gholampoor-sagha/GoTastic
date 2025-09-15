@@ -8,11 +8,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=password
-      - DB_NAME=todo
+      - DATABASE_HOST=mysql
+      - DATABASE_PORT=3306
+      - DATABASE_USER=root
+      - DATABASE_PASSWORD=password
+      - DATABASE_NAME=todo
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - S3_ENDPOINT=http://localstack:4566
@@ -38,8 +38,7 @@ services:
     networks:
       - app-network
     volumes:
-      # path is relative to THIS compose file (deployment/docker/docker-compose.yml)
-      - ../../migrations:/migrations
+      - /home/delaram-mahbano/Code/GoTastic/migrations:/migrations
     command:
       - -path=/migrations
       - -database=mysql://root:password@tcp(mysql:3306)/todo?multiStatements=true
