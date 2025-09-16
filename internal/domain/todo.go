@@ -12,28 +12,29 @@ func Init(registry *beeorm.Registry) {
 }
 
 type Outbox struct {
-	beeorm.ORM    `beeorm:"table:outbox"`
-	ID            uint64    `beeorm:"column:id;pk;auto_increment"`
-	AggregateType string    `beeorm:"column:aggregate_type;size:64;notnull;index"`
-	AggregateID   string    `beeorm:"column:aggregate_id;size:64;notnull;index"`
-	EventType     string    `beeorm:"column:event_type;size:128;notnull;index"`
-	Payload       []byte    `beeorm:"column:payload;type:json;notnull"`
-	Headers       *string   `beeorm:"column:headers;type:json"`
-	Status        string    `beeorm:"column:status;size:50;notnull;default:'pending';index"`
-	Attempts      int       `beeorm:"column:attempts;default:0"`
-	AvailableAt   time.Time `beeorm:"column:available_at;notnull;default:now();index"`
+	beeorm.ORM    `orm:"table=outbox"`
+	ID            uint64    `orm:"pk;auto_increment"`
+	AggregateType string    `orm:"size(64);index"`
+	AggregateID   string    `orm:"size(64);index"`
+	EventType     string    `orm:"size(128);index"`
+	Payload       []byte    `orm:"type(json)"`
+	Headers       *string   `orm:"type(json)"`
+	Status        string    `orm:"size(50);default('pending');index"`
+	Attempts      int       `orm:"default(0)"`
+	AvailableAt   time.Time `orm:"default(now());index"`
 }
 
 type TodoItem struct {
-	beeorm.ORM  `beeorm:"table:todos"`
-	ID          uint64     `beeorm:"column:id;pk;auto_increment"`
-	UUID        string     `beeorm:"column:uuid;size:36;notnull;unique;index"`
-	Description string     `beeorm:"column:description;size:255;notnull"`
-	DueDate     *time.Time `beeorm:"column:due_date;type:datetime;index"`
-	FileID      *string    `beeorm:"column:file_id;size:255;index"`
-	CreatedAt   time.Time  `beeorm:"column:created_at;type:datetime;default:now()"`
-	UpdatedAt   time.Time  `beeorm:"column:updated_at;type:datetime;default:now();on_update:now()"`
+	beeorm.ORM  `orm:"table=TodoItem"`
+	ID          uint64     `orm:"pk;auto_increment"`
+	UUID        string     `orm:"size(36);unique;index"`
+	Description string     `orm:"size(255)"`
+	DueDate     *time.Time `orm:"type(datetime);index"`
+	FileID      *string    `orm:"size(255);index"`
+	CreatedAt   time.Time  `orm:"type(datetime);default(now())"`
+	UpdatedAt   time.Time  `orm:"type(datetime);default(now());on_update(now())"`
 }
+
 type TodoFilter struct {
 	Q       *string
 	DueFrom *time.Time

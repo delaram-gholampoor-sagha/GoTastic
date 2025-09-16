@@ -44,7 +44,7 @@ func (r *TodoRepository) Create(ctx context.Context, todo *domain.TodoItem) erro
 func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoItem, error) {
 	var todo domain.TodoItem
 	// use real column name
-	if ok := r.engine.SearchOne(beeorm.NewWhere("uuid = ?", id), &todo); !ok {
+	if ok := r.engine.SearchOne(beeorm.NewWhere("UUID = ?", id), &todo); !ok {
 		return nil, repository.ErrNotFound
 	}
 	return &todo, nil
@@ -53,7 +53,7 @@ func (r *TodoRepository) GetByID(ctx context.Context, id string) (*domain.TodoIt
 func (r *TodoRepository) List(ctx context.Context) ([]*domain.TodoItem, error) {
 	var todos []*domain.TodoItem
 	// If your BeeORM build doesn’t allow ORDER BY in Where, remove it or switch to DB.Query.
-	where := beeorm.NewWhere("1=1 ORDER BY due_date ASC")
+	where := beeorm.NewWhere("1=1 ORDER BY DueDate ASC")
 	pager := beeorm.NewPager(1, 1000) // cap; adjust as needed
 	r.engine.Search(where, pager, &todos)
 	return todos, nil
@@ -86,36 +86,36 @@ func (r *TodoRepository) ListPaged(
 	args := []any{}
 
 	if f.Q != nil && *f.Q != "" {
-		conds = append(conds, "description LIKE ?")
+		conds = append(conds, "Description LIKE ?")
 		args = append(args, "%"+*f.Q+"%")
 	}
 	if f.DueFrom != nil {
-		conds = append(conds, "due_date >= ?")
+		conds = append(conds, "DueDate >= ?")
 		args = append(args, *f.DueFrom)
 	}
 	if f.DueTo != nil {
-		conds = append(conds, "due_date <= ?")
+		conds = append(conds, "DueDate <= ?")
 		args = append(args, *f.DueTo)
 	}
 	if f.HasFile != nil {
 		if *f.HasFile {
-			conds = append(conds, "file_id IS NOT NULL AND file_id <> ''")
+			conds = append(conds, "FileID IS NOT NULL AND FileID <> ''")
 		} else {
-			conds = append(conds, "(file_id IS NULL OR file_id = '')")
+			conds = append(conds, "(FileID IS NULL OR FileID = '')")
 		}
 	}
 
 	// SORT
-	field := "updated_at"
+	field := "UpdatedAt"
 	switch s.Field {
 	case domain.SortCreatedAt:
-		field = "created_at"
+		field = "CreatedAt"
 	case domain.SortDueDate:
-		field = "due_date"
+		field = "DueDate"
 	case domain.SortUpdatedAt:
-		field = "updated_at"
+		field = "UpdatedAt"
 	case domain.SortDescription:
-		field = "description"
+		field = "Description"
 	}
 	dir := "DESC"
 	if s.Direction == domain.SortAsc {
@@ -135,7 +135,7 @@ func (r *TodoRepository) ListPaged(
 
 	var total int64
 	{
-		rows, close := db.Query("SELECT COUNT(*) FROM todo_items WHERE "+whereSQL, args...)
+		rows, close := db.Query("SELECT COUNT(*) FROM TodoItem WHERE "+whereSQL, args...)
 		defer close()
 		if rows.Next() {
 			rows.Scan(&total)
@@ -151,9 +151,9 @@ func (r *TodoRepository) ListPaged(
 	return todos, total, nil
 }
 
-func (r *TodoRepository) Delete(ctx context.Context, id string) error {
+func (r *TodoRepository) Delete(ctx context.Context, uuid string) error {
 	var todo domain.TodoItem
-	if ok := r.engine.SearchOne(beeorm.NewWhere("UUID = ?", id), &todo); !ok {
+	if ok := r.engine.SearchOne(beeorm.NewWhere("UUID = ?", uuid), &todo); !ok {
 		return repository.ErrNotFound
 	}
 	fl := r.engine.NewFlusher()

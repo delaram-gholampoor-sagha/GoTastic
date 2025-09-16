@@ -10,6 +10,7 @@ import (
 	"git.ice.global/packages/beeorm/v4"
 	"github.com/delaram/GoTastic/internal/domain"
 	"github.com/delaram/GoTastic/internal/repository"
+	"github.com/delaram/GoTastic/pkg/logger"
 )
 
 type beeTx struct{ db *beeorm.DB }
@@ -19,9 +20,12 @@ func (t *beeTx) Rollback(ctx context.Context) error { t.db.Rollback(); return ni
 
 type OutboxRepo struct {
 	engine *beeorm.Engine
+	logger logger.Logger
 }
 
-func NewOutboxRepo(engine *beeorm.Engine) *OutboxRepo { return &OutboxRepo{engine: engine} }
+func NewOutboxRepo(engine *beeorm.Engine, logger logger.Logger) *OutboxRepo {
+	return &OutboxRepo{engine: engine, logger: logger}
+}
 
 func (r *OutboxRepo) BeginTx(ctx context.Context) (repository.Tx, error) {
 	db := r.engine.GetMysql()
@@ -29,12 +33,20 @@ func (r *OutboxRepo) BeginTx(ctx context.Context) (repository.Tx, error) {
 	return &beeTx{db: db}, nil
 }
 
-func (r *OutboxRepo) Insert(_ context.Context, _ repository.Tx, msg repository.OutboxMessage) error {
+func (r *OutboxRepo) Insert(ctx context.Context, tx repository.Tx, msg repository.OutboxMessage) error {
+	r.logger.Debug("Starting OutboxRepo.Insert with msg: %+v", msg)
 	var headersPtr *string
 	if len(msg.Headers) > 0 {
-		b, _ := json.Marshal(msg.Headers)
+		b, err := json.Marshal(msg.Headers)
+		if err != nil {
+			r.logger.Error("Failed to marshal headers", err)
+			return err
+		}
 		s := string(b)
 		headersPtr = &s
+		r.logger.Debug("Headers marshaled: %s", s)
+	} else {
+		r.logger.Debug("No headers provided")
 	}
 
 	e := &domain.Outbox{
@@ -47,10 +59,21 @@ func (r *OutboxRepo) Insert(_ context.Context, _ repository.Tx, msg repository.O
 		Attempts:      0,
 		AvailableAt:   time.Now().UTC(),
 	}
+	r.logger.Debug("Created Outbox entity: %+v", e)
 
 	fl := r.engine.NewFlusher()
+	r.logger.Debug("New Flusher created")
 	fl.Track(e)
-	return fl.FlushWithCheck()
+	r.logger.Debug("Entity tracked in flusher")
+
+	err := fl.FlushWithCheck()
+	if err != nil {
+		r.logger.Error("FlushWithCheck failed", err)
+		return err
+	}
+	r.logger.Debug("FlushWithCheck succeeded, Outbox ID: %d", e.ID)
+
+	return nil
 }
 
 func (r *OutboxRepo) FetchAndLock(ctx context.Context, limit int, lockForSeconds int) ([]repository.LockedOutboxRow, error) {
@@ -64,17 +87,17 @@ func (r *OutboxRepo) FetchAndLock(ctx context.Context, limit int, lockForSeconds
 	now := time.Now()
 	db.Exec(`
         UPDATE outbox
-        SET status = 'pending'
-        WHERE status = 'pending'
-          AND available_at <= ?
+        SET Status = 'pending'
+        WHERE Status = 'pending'
+          AND AvailableAt <= ?
         ORDER BY id
         LIMIT ?
     `, now, limit)
 	rows, close := db.Query(`
-    SELECT id, aggregate_type, aggregate_id, event_type, payload, attempts
+    SELECT id, AggregateType, AggregateID, EventType, Payload, Attempts
     FROM outbox
-    WHERE status = 'pending'
-      AND available_at <= ?
+    WHERE Status = 'pending'
+      AND AvailableAt <= ?
     ORDER BY id
 `, now)
 	defer close()

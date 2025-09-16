@@ -40,6 +40,7 @@ func NewTodoUseCase(logger logger.Logger,
 }
 
 func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, dueDate time.Time, fileID string) (*domain.TodoItem, error) {
+	u.logger.Debug("Starting CreateTodoItem with description: %s, dueDate: %v, fileID: %s", description, dueDate, fileID)
 	var filePtr *string
 	if fileID != "" {
 		exists, err := u.fileRepo.Exists(ctx, fileID)
@@ -51,6 +52,9 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 			return nil, repository.ErrNotFound
 		}
 		filePtr = &fileID
+		u.logger.Debug("FileID exists, set to: %s", fileID)
+	} else {
+		u.logger.Debug("No fileID provided")
 	}
 
 	todo := &domain.TodoItem{
@@ -61,40 +65,65 @@ func (u *TodoUseCase) CreateTodoItem(ctx context.Context, description string, du
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
 	}
+	u.logger.Debug("Created TodoItem: %+v", todo)
+
 	txStarter, ok := u.todoRepo.(repository.TxStarter)
 	if !ok {
+		u.logger.Error("todoRepo does not support transactions", nil)
 		return nil, fmt.Errorf("todoRepo does not support transactions")
 	}
 	tx, err := txStarter.BeginTx(ctx)
 	if err != nil {
+		u.logger.Error("Failed to begin transaction", err)
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	u.logger.Debug("Transaction begun")
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			u.logger.Warn("Rollback failed", err)
+		} else {
+			u.logger.Debug("Transaction rolled back (deferred)")
+		}
+	}()
 
 	if err := u.todoRepo.CreateTx(ctx, tx, todo); err != nil {
 		u.logger.Error("Failed to create todo", err)
 		return nil, err
 	}
+	u.logger.Debug("Todo created successfully with ID: %d", todo.ID)
 
-	payload, _ := json.Marshal(todo)
+	payload, err := json.Marshal(todo)
+	if err != nil {
+		u.logger.Error("Failed to marshal todo for outbox payload", err)
+		return nil, err
+	}
+	u.logger.Debug("Outbox payload marshaled: %s", string(payload))
 
-	if err := u.outboxRepo.Insert(ctx, tx, repository.OutboxMessage{
+	outboxMsg := repository.OutboxMessage{
 		AggregateType: "todo",
 		AggregateID:   todo.UUID,
 		EventType:     "todo.created",
 		Payload:       payload,
 		Headers:       map[string]string{"source": "api", "schema": "v1"},
-	}); err != nil {
-		u.logger.Error("outbox", err)
+	}
+	u.logger.Debug("Outbox message prepared: %+v", outboxMsg)
+
+	if err := u.outboxRepo.Insert(ctx, tx, outboxMsg); err != nil {
+		u.logger.Error("Failed to insert outbox message", err)
 		return nil, err
 	}
+	u.logger.Debug("Outbox message inserted successfully")
 
 	if err := tx.Commit(ctx); err != nil {
+		u.logger.Error("Failed to commit transaction", err)
 		return nil, err
 	}
+	u.logger.Debug("Transaction committed successfully")
 
 	if err := u.cacheRepo.Delete(ctx, "todos"); err != nil {
 		u.logger.Warn("Failed to invalidate cache", err)
+	} else {
+		u.logger.Debug("Cache invalidated successfully")
 	}
 
 	return todo, nil
@@ -189,22 +218,22 @@ func (u *TodoUseCase) UpdateTodoItem(ctx context.Context, todo *domain.TodoItem)
 	return nil
 }
 
-func (u *TodoUseCase) DeleteTodoItem(ctx context.Context, id string) error {
-	if err := u.todoRepo.Delete(ctx, id); err != nil {
+func (u *TodoUseCase) DeleteTodoItem(ctx context.Context, uuid string) error {
+	todo, err := u.todoRepo.GetByID(ctx, uuid)
+	if err != nil {
+		u.logger.Error("Failed to get todo for deletion", err)
+		return err
+	}
+
+	if err := u.todoRepo.Delete(ctx, uuid); err != nil {
 		u.logger.Error("Failed to delete todo", err)
 		return err
 	}
 
-	if err := u.cacheRepo.Delete(ctx, "todo:"+id); err != nil {
+	if err := u.cacheRepo.Delete(ctx, "todo:"+uuid); err != nil {
 		u.logger.Warn("Failed to invalidate todo cache", err)
 	}
 
-	idUint, err := strconv.ParseUint(id, 10, 64)
-	if err != nil {
-		u.logger.Error("Invalid ID format", err)
-		return fmt.Errorf("invalid ID format: %w", err)
-	}
-	todo := &domain.TodoItem{ID: idUint}
 	if err := u.streamPublisher.PublishTodoItem(ctx, todo); err != nil {
 		u.logger.Warn("Failed to publish todo item to stream", err)
 	}
